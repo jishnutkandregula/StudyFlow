@@ -27,13 +27,15 @@ StudyFlow is designed for college students who:
 
 ## Core integrations
 
-### Version one
+### Manual MVP
 
-- Google Calendar for busy-time availability and approved study-block creation.
 - Manual entry for courses, assignments, deadlines, estimated work, and importance.
+- Student-defined availability, meals, sleep, and protected personal time.
 
-### Future integrations
+### After the manual MVP
 
+- Google Calendar read access for busy-time availability.
+- Approved Google Calendar study-block creation.
 - Canvas calendar feeds, exports, or approved API access.
 - Syllabus upload with reviewable assignment extraction.
 - Gmail, only with explicit permission, for surfacing possible course announcements or deadline changes.

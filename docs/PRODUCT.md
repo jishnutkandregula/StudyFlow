@@ -12,7 +12,7 @@ The biggest failure is not simply forgetting a deadline. Students often realize 
 
 ## The product
 
-StudyFlow is an adaptive academic planning assistant that helps students turn Canvas assignments and their real Google Calendar availability into a realistic study plan.
+StudyFlow is an adaptive academic planning assistant that helps students turn coursework, deadlines, availability, and personal constraints into a realistic study plan. The first release uses manual entry; Google Calendar and Canvas make later releases more convenient.
 
 It answers:
 
@@ -30,29 +30,27 @@ They use Canvas for assignments, Google Calendar for classes and meetings, and U
 
 ## Core user flow
 
-1. The student connects Google Calendar.
-2. StudyFlow reads busy events and identifies available study windows.
-3. The student enters preferences such as sleep hours, meal times, maximum study-session length, and preferred work times.
-4. The student imports Canvas assignments or adds them manually.
-5. StudyFlow creates suggested study blocks based on deadlines, assignment weight, estimated effort, and availability.
-6. The student approves, edits, or rejects suggested blocks before anything is added to Google Calendar.
-7. If the student misses work, StudyFlow recalculates the plan and explains the trade-offs.
+1. The student enters preferences such as sleep hours, meal times, maximum study-session length, and preferred work times.
+2. The student adds courses, coursework, due dates, estimates, and available study time manually.
+3. StudyFlow creates suggested study blocks based on deadlines, assignment weight, estimated effort, and availability.
+4. The student approves, edits, rejects, or locks suggested study blocks inside StudyFlow.
+5. If the student misses work, StudyFlow recalculates the plan and explains the trade-offs.
 
 ## MVP features
 
-- Google Calendar read integration
 - User-defined sleep, breakfast, lunch, dinner, and personal-time preferences
 - Courses, assignments, due dates, estimated effort, and grading weights
 - Study-window detection
 - Weekly study-plan generation
 - Clear risk alerts for workloads that do not fit available time
 - Missed-work recovery planning
-- User approval before creating or changing Google Calendar events
 
 ## Not in version one
 
 - Scraping Canvas Dashboard
 - Reading all Gmail emails
+- Google Calendar integration or calendar writes
+- Canvas, syllabus, or coursework imports
 - Completing coursework for a student
 - Flashcards, tutoring, or essay generation
 - Social features
@@ -61,7 +59,9 @@ They use Canvas for assignments, Google Calendar for classes and meetings, and U
 
 ## Integration strategy
 
-Google Calendar is the first integration because students already use it to track classes, meetings, work, and personal commitments.
+The manual planning workflow comes first so StudyFlow can prove that its schedules and recovery plans are useful without requiring account permissions.
+
+Google Calendar read access is the first integration after the MVP because students already use it to track classes, meetings, work, and personal commitments. Calendar writes remain opt-in and require approval.
 
 Canvas is important, but we should start with a safe import method such as a Canvas calendar feed, assignment export, or user-reviewed syllabus import. We should not depend on scraping Canvas.
 
@@ -77,7 +77,7 @@ StudyFlow identifies real study time, protects personal time, creates an achieva
 
 A student should be able to:
 
-1. Connect their calendar and create a first plan in under five minutes.
+1. Create a first plan in under five minutes without connecting an external account.
 2. Understand why every suggested study block exists.
 3. See early when there is not enough time before a deadline.
 4. Recover from missed work without rebuilding the entire week manually.

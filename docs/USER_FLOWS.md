@@ -3,20 +3,16 @@
 ## 1. First-time setup
 
 1. A student opens StudyFlow.
-2. They create an account using their UCSC Google account.
-3. StudyFlow explains exactly what Google Calendar access is used for:
-   - Read classes, meetings, work shifts, and other busy events.
-   - Identify available study windows.
-   - Never create or change calendar events without approval.
-4. The student connects Google Calendar.
-5. The student sets planning preferences:
+2. They create an account.
+3. The student sets planning preferences:
    - Typical wake and sleep times
    - Breakfast, lunch, and dinner preferences
    - Preferred study days and times
    - Maximum focus-session length
    - Minimum break length
    - Days or times that should never be scheduled
-6. StudyFlow shows the student a summary of their available weekly study time.
+4. The student adds recurring availability and one-time unavailable blocks.
+5. StudyFlow shows the student a summary of their available weekly study time.
 
 ## 2. Add academic work
 
@@ -48,7 +44,7 @@ StudyFlow never silently imports uncertain deadlines.
    - Upcoming deadlines
    - Assignment importance
    - Estimated work
-   - Calendar conflicts
+   - Saved availability and unavailable blocks
    - Meals, sleep, and protected personal time
    - Available study windows
 3. StudyFlow creates suggested study sessions.
@@ -58,9 +54,16 @@ StudyFlow never silently imports uncertain deadlines.
    - Deadline
    - Why the session was scheduled at that time
 5. The student can accept, move, shorten, delete, or lock a suggested session.
-6. StudyFlow asks before adding approved study sessions to Google Calendar.
 
-## 4. Daily execution
+## 4. Google Calendar integration (post-MVP)
+
+1. The student chooses to connect Google Calendar.
+2. StudyFlow explains the calendar data it will read and lets the student select calendars.
+3. StudyFlow uses busy events to improve available-study-window detection.
+4. StudyFlow shows every proposed calendar write before creating a study block.
+5. The student can disconnect Google Calendar or disable calendar writes at any time.
+
+## 5. Daily execution
 
 1. The student opens the “Today” view.
 2. They see:
@@ -74,7 +77,7 @@ StudyFlow never silently imports uncertain deadlines.
    - Skipped
 4. The student can update the remaining time estimate.
 
-## 5. Missed-work recovery
+## 6. Missed-work recovery
 
 1. A student skips or partially completes a planned study session.
 2. StudyFlow asks how much work remains.
@@ -91,16 +94,16 @@ StudyFlow never silently imports uncertain deadlines.
 
 StudyFlow must be honest when a full recovery is not possible.
 
-## 6. Workload-risk alert
+## 7. Workload-risk alert
 
 1. StudyFlow detects that estimated coursework exceeds available study time before one or more deadlines.
 2. It displays a clear risk alert instead of overbooking the student.
 3. The student sees the affected tasks and the time shortfall.
 4. StudyFlow suggests actionable options, but the student remains in control.
 
-## 7. Privacy and control
+## 8. Privacy and control
 
-At every integration point, students can:
+For every future integration, students can:
 
 - View what data StudyFlow can access.
 - Disconnect Google Calendar.
