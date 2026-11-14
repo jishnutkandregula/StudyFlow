@@ -57,15 +57,46 @@ Student-approved calendar updates
 
 ## Project status
 
-StudyFlow is currently in the product-planning phase.
+The manual planning MVP is in active development. The first vertical slice includes a responsive
+Next.js interface and a tested FastAPI planning service. It supports manual coursework entry,
+deadline-first session generation, workload-risk reporting, and an explicit skipped-session recovery
+prompt. Data persistence, editable availability, and onboarding are the next build steps.
 
-The initial focus is a manual planning MVP:
+The initial focus remains a manual planning MVP:
 
 1. Add courses and assignments.
 2. Define available study time and protected personal time.
 3. Generate an explainable weekly study plan.
 4. Identify workload risk.
 5. Re-plan after missed work.
+
+## Run locally
+
+Start the API in one terminal:
+
+```bash
+cd apps/api
+python3 -m venv .venv
+.venv/bin/python -m pip install "fastapi>=0.115" "uvicorn[standard]>=0.32"
+.venv/bin/uvicorn app.main:app --reload
+```
+
+Then start the web app in another:
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. The web app calls the API at `http://127.0.0.1:8000` by default.
+
+## Development checks
+
+```bash
+cd apps/api && .venv/bin/python -m pytest tests -q && .venv/bin/python -m ruff check app tests
+cd apps/web && npm run typecheck && npm run build
+```
 
 ## Documentation
 
