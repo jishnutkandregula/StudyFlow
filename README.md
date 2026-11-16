@@ -59,8 +59,9 @@ Student-approved calendar updates
 
 The manual planning MVP is in active development. The first vertical slice includes a responsive
 Next.js interface and a tested FastAPI planning service. It supports manual coursework entry,
-deadline-first session generation, workload-risk reporting, and an explicit skipped-session recovery
-prompt. Data persistence, editable availability, and onboarding are the next build steps.
+deadline-first session generation, recurring editable availability, sleep and meal guardrails,
+protected commitments, daily study caps, and workload-risk reporting. Data persistence,
+coursework editing, onboarding, and true recovery recalculation are the next build steps.
 
 The initial focus remains a manual planning MVP:
 
