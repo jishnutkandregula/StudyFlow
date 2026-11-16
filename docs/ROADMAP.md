@@ -24,7 +24,7 @@ Create the planning documents and define exactly what version one must do.
 
 ### Status
 
-In progress.
+Complete.
 
 ## Milestone 1 — Manual planning MVP
 
@@ -50,6 +50,14 @@ Allow a student to manually enter coursework and availability, then receive a re
 ### Definition of done
 
 A student can enter a week of coursework and availability, receive a realistic plan, and understand what task they should work on next.
+
+### Current progress
+
+- Manual coursework entry and deadline-first planning are working.
+- Students can configure recurring weekly availability, sleep, meals, protected commitments,
+  focus-session length, and a daily study cap.
+- The planner excludes protected time and visibly warns when work cannot fit.
+- Account creation, coursework editing, persistence, and a true recovery recalculation remain.
 
 ## Milestone 2 — Adaptive recovery planning
 

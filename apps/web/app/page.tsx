@@ -30,6 +30,22 @@ type Plan = {
   available_minutes: number;
   risk: "low" | "medium" | "high";
   explanation: string;
+  warnings: string[];
+};
+
+type DailyAvailability = {
+  day_of_week: number;
+  label: string;
+  start_time: string;
+  end_time: string;
+  is_day_off: boolean;
+};
+
+type ProtectedBlock = {
+  label: string;
+  days_of_week: number[];
+  start_time: string;
+  end_time: string;
 };
 
 const initialTasks: Task[] = [
@@ -38,17 +54,15 @@ const initialTasks: Task[] = [
   { id: "reading", title: "Reading response", course: "CSE 102", due_date: "2026-11-18", estimated_minutes: 45, priority: 3, course_weight: 5 },
 ];
 
-function toIsoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function defaultAvailability() {
-  return Array.from({ length: 5 }, (_, index) => {
-    const day = new Date();
-    day.setDate(day.getDate() + index);
-    return { date: toIsoDate(day), start_time: "18:30:00", end_time: "21:30:00" };
-  });
-}
+const week: DailyAvailability[] = [
+  "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+].map((label, day_of_week) => ({
+  day_of_week,
+  label,
+  start_time: day_of_week < 5 ? "18:30:00" : "10:00:00",
+  end_time: day_of_week < 5 ? "21:30:00" : "14:00:00",
+  is_day_off: false,
+}));
 
 function hours(minutes: number) {
   return `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ""}`;
@@ -60,6 +74,25 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [draft, setDraft] = useState({ title: "", course: "", due_date: "", estimated_minutes: "60", priority: "3" });
+  const [availability, setAvailability] = useState<DailyAvailability[]>(week);
+  const [protectedBlocks, setProtectedBlocks] = useState<ProtectedBlock[]>([]);
+  const [protectedDraft, setProtectedDraft] = useState<ProtectedBlock>({
+    label: "",
+    days_of_week: [0],
+    start_time: "17:00:00",
+    end_time: "18:00:00",
+  });
+  const [preferences, setPreferences] = useState({
+    sleep_start: "23:00:00",
+    wake_time: "07:00:00",
+    lunch_start: "12:00:00",
+    lunch_end: "13:00:00",
+    dinner_start: "18:00:00",
+    dinner_end: "19:00:00",
+    focus_session_minutes: "50",
+    short_break_minutes: "10",
+    max_study_minutes_per_day: "240",
+  });
 
   const courses = useMemo(() => [...new Set(tasks.map((task) => task.course))], [tasks]);
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
@@ -92,9 +125,19 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tasks,
-          availability: defaultAvailability(),
-          max_session_minutes: 90,
-          minimum_break_minutes: 10,
+          recurring_availability: availability.map(({ label, ...item }) => item),
+          protected_time: protectedBlocks,
+          preferences: {
+            sleep_start: preferences.sleep_start,
+            wake_time: preferences.wake_time,
+            meals: [
+              { start_time: preferences.lunch_start, end_time: preferences.lunch_end },
+              { start_time: preferences.dinner_start, end_time: preferences.dinner_end },
+            ],
+            focus_session_minutes: Number(preferences.focus_session_minutes),
+            short_break_minutes: Number(preferences.short_break_minutes),
+            max_study_minutes_per_day: Number(preferences.max_study_minutes_per_day),
+          },
         }),
       });
       if (!response.ok) throw new Error("StudyFlow could not generate your plan.");
@@ -121,6 +164,25 @@ export default function Home() {
       risk: "medium",
     } : current);
     setMessage("Session marked skipped. Regenerate to build a recovery plan around the remaining work.");
+  }
+
+  function updateAvailability(day: number, changes: Partial<DailyAvailability>) {
+    setAvailability((current) => current.map((item) => item.day_of_week === day ? { ...item, ...changes } : item));
+  }
+
+  function toggleProtectedDay(day: number) {
+    setProtectedDraft((current) => ({
+      ...current,
+      days_of_week: current.days_of_week.includes(day)
+        ? current.days_of_week.filter((item) => item !== day)
+        : [...current.days_of_week, day],
+    }));
+  }
+
+  function addProtectedBlock() {
+    if (!protectedDraft.label.trim() || !protectedDraft.days_of_week.length) return;
+    setProtectedBlocks((current) => [...current, { ...protectedDraft, label: protectedDraft.label.trim() }]);
+    setProtectedDraft({ label: "", days_of_week: [0], start_time: "17:00:00", end_time: "18:00:00" });
   }
 
   return (
@@ -200,9 +262,39 @@ export default function Home() {
               <article className="panel recovery"><h3>Recovery & risk</h3><p><strong>{hours(plan.scheduled_minutes)}</strong> scheduled out of <strong>{hours(plan.requested_minutes)}</strong> requested.</p>{plan.unscheduled.length ? plan.unscheduled.map((item) => <div className="risk-item" key={`${item.task_title}-${item.remaining_minutes}`}><strong>{item.task_title}</strong><span>{hours(item.remaining_minutes)} remain · {item.risk} risk</span><p>{item.reason}</p></div>) : <div className="success">Everything currently fits. Keep checking in as estimates change.</div>}</article>
             </div>
           )}
+          {plan?.warnings.length ? <div className="warnings">{plan.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div> : null}
         </section>
 
-        <section id="preferences" className="preferences"><p className="eyebrow">NEXT UP</p><h2>Preferences and real calendar availability</h2><p>This first usable slice uses an evening availability baseline. The next implementation step replaces it with editable sleep, meals, protected time, and availability controls—then adds Google Calendar read-only access after the manual flow proves useful.</p></section>
+        <section id="preferences" className="preferences">
+          <div className="section-heading"><div><p className="eyebrow">YOUR REAL WEEK</p><h2>Availability & preferences</h2><p>Tell StudyFlow when you can study. It will leave sleep, meals, and commitments alone.</p></div></div>
+          <div className="preference-grid">
+            <div className="settings-card">
+              <h3>Weekly availability</h3>
+              <div className="availability-list">
+                {availability.map((day) => <div className="availability-row" key={day.day_of_week}>
+                  <strong>{day.label.slice(0, 3)}</strong>
+                  <label className="check-label"><input type="checkbox" checked={!day.is_day_off} onChange={(event) => updateAvailability(day.day_of_week, { is_day_off: !event.target.checked })} /> Available</label>
+                  <input aria-label={`${day.label} start time`} type="time" disabled={day.is_day_off} value={day.start_time.slice(0, 5)} onChange={(event) => updateAvailability(day.day_of_week, { start_time: `${event.target.value}:00` })} />
+                  <span>to</span>
+                  <input aria-label={`${day.label} end time`} type="time" disabled={day.is_day_off} value={day.end_time.slice(0, 5)} onChange={(event) => updateAvailability(day.day_of_week, { end_time: `${event.target.value}:00` })} />
+                </div>)}
+              </div>
+            </div>
+            <div className="settings-card settings-form">
+              <h3>Guardrails</h3>
+              <div className="form-row"><label>Sleep starts<input type="time" value={preferences.sleep_start.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, sleep_start: `${event.target.value}:00` })} /></label><label>Wake time<input type="time" value={preferences.wake_time.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, wake_time: `${event.target.value}:00` })} /></label></div>
+              <div className="form-row"><label>Lunch starts<input type="time" value={preferences.lunch_start.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, lunch_start: `${event.target.value}:00` })} /></label><label>Lunch ends<input type="time" value={preferences.lunch_end.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, lunch_end: `${event.target.value}:00` })} /></label></div>
+              <div className="form-row"><label>Dinner starts<input type="time" value={preferences.dinner_start.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, dinner_start: `${event.target.value}:00` })} /></label><label>Dinner ends<input type="time" value={preferences.dinner_end.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, dinner_end: `${event.target.value}:00` })} /></label></div>
+              <div className="form-row"><label>Focus minutes<input min="25" max="120" type="number" value={preferences.focus_session_minutes} onChange={(event) => setPreferences({ ...preferences, focus_session_minutes: event.target.value })} /></label><label>Daily study cap<input min="60" max="720" step="30" type="number" value={preferences.max_study_minutes_per_day} onChange={(event) => setPreferences({ ...preferences, max_study_minutes_per_day: event.target.value })} /></label></div>
+            </div>
+          </div>
+          <div className="settings-card protected-card">
+            <div className="panel-heading"><div><h3>Protected commitments</h3><p className="muted">Work, meetings, practice—anything StudyFlow must never schedule over.</p></div></div>
+            <div className="protected-form"><input aria-label="Commitment name" value={protectedDraft.label} onChange={(event) => setProtectedDraft({ ...protectedDraft, label: event.target.value })} placeholder="e.g. Club meeting" /><input aria-label="Commitment start time" type="time" value={protectedDraft.start_time.slice(0, 5)} onChange={(event) => setProtectedDraft({ ...protectedDraft, start_time: `${event.target.value}:00` })} /><input aria-label="Commitment end time" type="time" value={protectedDraft.end_time.slice(0, 5)} onChange={(event) => setProtectedDraft({ ...protectedDraft, end_time: `${event.target.value}:00` })} /><button className="secondary" type="button" onClick={addProtectedBlock}>Protect time</button></div>
+            <div className="day-picker">{week.map((day) => <label key={day.day_of_week}><input type="checkbox" checked={protectedDraft.days_of_week.includes(day.day_of_week)} onChange={() => toggleProtectedDay(day.day_of_week)} /> {day.label.slice(0, 3)}</label>)}</div>
+            {protectedBlocks.length ? <div className="protected-list">{protectedBlocks.map((block, index) => <div key={`${block.label}-${index}`}><span><strong>{block.label}</strong> · {block.days_of_week.map((day) => week[day].label.slice(0, 3)).join(", ")} · {block.start_time.slice(0, 5)}–{block.end_time.slice(0, 5)}</span><button className="text-button" onClick={() => setProtectedBlocks((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div>)}</div> : <p className="muted">No protected commitments yet.</p>}
+          </div>
+        </section>
       </section>
     </main>
   );

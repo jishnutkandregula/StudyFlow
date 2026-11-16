@@ -1,6 +1,16 @@
 from datetime import date, time
 
-from app.planner import AvailabilityBlock, PlanningRequest, RiskLevel, Task, generate_plan
+from app.planner import (
+    AvailabilityBlock,
+    MealWindow,
+    PlanningPreferences,
+    PlanningRequest,
+    ProtectedTimeBlock,
+    RecurringAvailability,
+    RiskLevel,
+    Task,
+    generate_plan,
+)
 
 
 def test_prioritizes_nearest_deadline_and_respects_available_time() -> None:
@@ -54,3 +64,129 @@ def test_reports_high_risk_when_due_work_cannot_fit() -> None:
 
     assert plan.risk is RiskLevel.HIGH
     assert plan.unscheduled[0].remaining_minutes == 60
+
+
+def recurring_request(**overrides: object) -> PlanningRequest:
+    """A Monday planning fixture with enough work to exercise schedule boundaries."""
+
+    values: dict[str, object] = {
+        "tasks": [
+            Task(
+                id="lab",
+                title="Lab 5",
+                course="CSE 101",
+                due_date=date(2026, 11, 17),
+                estimated_minutes=300,
+            )
+        ],
+        "recurring_availability": [
+            RecurringAvailability(day_of_week=0, start_time=time(16), end_time=time(21))
+        ],
+        "preferences": PlanningPreferences(
+            sleep_start=time(23),
+            wake_time=time(7),
+            focus_session_minutes=50,
+            short_break_minutes=10,
+            max_study_minutes_per_day=300,
+        ),
+    }
+    values.update(overrides)
+    return PlanningRequest(**values)
+
+
+def test_day_off_creates_no_sessions() -> None:
+    request = recurring_request(
+        recurring_availability=[
+            RecurringAvailability(
+                day_of_week=0, start_time=time(16), end_time=time(21), is_day_off=True
+            )
+        ]
+    )
+
+    plan = generate_plan(request, today=date(2026, 11, 16))
+
+    assert plan.sessions == []
+    assert "No schedulable time" in plan.warnings[0]
+
+
+def test_protected_time_is_never_scheduled() -> None:
+    request = recurring_request(
+        protected_time=[
+            ProtectedTimeBlock(
+                label="Club meeting", days_of_week=[0], start_time=time(17), end_time=time(19)
+            )
+        ]
+    )
+
+    plan = generate_plan(request, today=date(2026, 11, 16))
+
+    assert plan.sessions[0].starts_at.time() == time(16)
+    assert all(
+        not (session.starts_at.time() < time(19) and session.ends_at.time() > time(17))
+        for session in plan.sessions
+    )
+
+
+def test_sleep_and_meals_split_availability() -> None:
+    request = recurring_request(
+        recurring_availability=[
+            RecurringAvailability(day_of_week=0, start_time=time(6), end_time=time(21))
+        ],
+        preferences=PlanningPreferences(
+            sleep_start=time(23),
+            wake_time=time(8),
+            meals=[MealWindow(start_time=time(12), end_time=time(13))],
+            focus_session_minutes=50,
+            short_break_minutes=10,
+            max_study_minutes_per_day=300,
+        ),
+    )
+
+    plan = generate_plan(request, today=date(2026, 11, 16))
+
+    assert all(session.starts_at.time() >= time(8) for session in plan.sessions)
+    assert all(
+        not (session.starts_at.time() < time(13) and session.ends_at.time() > time(12))
+        for session in plan.sessions
+    )
+
+
+def test_daily_cap_limits_scheduled_work() -> None:
+    request = recurring_request(
+        preferences=PlanningPreferences(
+            sleep_start=time(23),
+            wake_time=time(7),
+            focus_session_minutes=50,
+            short_break_minutes=10,
+            max_study_minutes_per_day=100,
+        )
+    )
+
+    plan = generate_plan(request, today=date(2026, 11, 16))
+
+    assert plan.scheduled_minutes == 100
+    assert plan.available_minutes == 100
+
+
+def test_imminent_deadline_warns_when_every_window_is_protected() -> None:
+    request = recurring_request(
+        tasks=[
+            Task(
+                id="urgent",
+                title="Urgent problem set",
+                course="CSE 101",
+                due_date=date(2026, 11, 16),
+                estimated_minutes=50,
+            )
+        ],
+        protected_time=[
+            ProtectedTimeBlock(
+                label="Work", days_of_week=[0], start_time=time(16), end_time=time(21)
+            )
+        ],
+    )
+
+    plan = generate_plan(request, today=date(2026, 11, 16))
+
+    assert plan.risk is RiskLevel.HIGH
+    assert any("Urgent problem set" in warning for warning in plan.warnings)
