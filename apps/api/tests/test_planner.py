@@ -2,6 +2,7 @@ from datetime import date, time
 
 from app.planner import (
     AvailabilityBlock,
+    BusyTimeBlock,
     MealWindow,
     PlanningPreferences,
     PlanningRequest,
@@ -190,3 +191,20 @@ def test_imminent_deadline_warns_when_every_window_is_protected() -> None:
 
     assert plan.risk is RiskLevel.HIGH
     assert any("Urgent problem set" in warning for warning in plan.warnings)
+
+
+def test_imported_calendar_event_is_treated_as_busy_time() -> None:
+    request = recurring_request(
+        busy_time=[
+            BusyTimeBlock(
+                date=date(2026, 11, 16),
+                start_time=time(16),
+                end_time=time(19),
+                label="Lecture",
+            )
+        ]
+    )
+
+    plan = generate_plan(request, today=date(2026, 11, 16))
+
+    assert all(session.starts_at.time() >= time(19) for session in plan.sessions)

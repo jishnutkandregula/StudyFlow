@@ -69,6 +69,21 @@ class ProtectedTimeBlock(BaseModel):
         return self
 
 
+class BusyTimeBlock(BaseModel):
+    """A one-time imported calendar event that must never receive a study session."""
+
+    date: date
+    start_time: time
+    end_time: time
+    label: str = Field(default="Calendar event", min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def ends_after_start(self) -> BusyTimeBlock:
+        if self.end_time <= self.start_time:
+            raise ValueError("end_time must be later than start_time")
+        return self
+
+
 class MealWindow(BaseModel):
     start_time: time
     end_time: time
@@ -95,6 +110,7 @@ class PlanningRequest(BaseModel):
     availability: list[AvailabilityBlock] = Field(default_factory=list)
     recurring_availability: list[RecurringAvailability] = Field(default_factory=list)
     protected_time: list[ProtectedTimeBlock] = Field(default_factory=list)
+    busy_time: list[BusyTimeBlock] = Field(default_factory=list)
     preferences: Optional[PlanningPreferences] = None  # noqa: UP045 -- Python 3.9 runtime
     max_session_minutes: int = Field(default=90, ge=15, le=180)
     minimum_break_minutes: int = Field(default=10, ge=0, le=60)
@@ -177,11 +193,17 @@ def _base_availability(request: PlanningRequest, reference_date: date) -> list[A
 def _blocked_intervals(day: date, request: PlanningRequest) -> list[tuple[datetime, datetime]]:
     """Build same-day intervals that must be subtracted from availability."""
 
+    blocked: list[tuple[datetime, datetime]] = []
+    for item in request.busy_time:
+        if item.date == day:
+            blocked.append(
+                (datetime.combine(day, item.start_time), datetime.combine(day, item.end_time))
+            )
+
     preferences = request.preferences
     if preferences is None:
-        return []
+        return blocked
 
-    blocked: list[tuple[datetime, datetime]] = []
     day_start = datetime.combine(day, time.min)
     day_end = day_start + timedelta(days=1)
     sleep_start = datetime.combine(day, preferences.sleep_start)
