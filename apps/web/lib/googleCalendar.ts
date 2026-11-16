@@ -64,15 +64,20 @@ export async function requestCalendarToken(clientId: string): Promise<string> {
   });
 }
 
-export async function importCalendarEvents(accessToken: string): Promise<ImportedCalendarEvent[]> {
+export type CalendarImportResult = { events: ImportedCalendarEvent[]; calendarsScanned: number };
+
+export async function importCalendarEvents(accessToken: string): Promise<CalendarImportResult> {
   const headers = { Authorization: `Bearer ${accessToken}` };
   const calendarsResponse = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=reader", { headers });
   if (!calendarsResponse.ok) throw new Error("StudyFlow could not read your calendar list.");
   const calendars = (await calendarsResponse.json()).items as Array<{ id: string; summary: string; selected?: boolean }>;
   const timeMin = new Date().toISOString();
-  const timeMax = new Date(Date.now() + 1000 * 60 * 60 * 24 * 35).toISOString();
-  const visibleCalendars = calendars.filter((calendar) => calendar.selected !== false).slice(0, 20);
-  const responses = await Promise.all(visibleCalendars.map(async (calendar) => {
+  const timeMax = new Date(Date.now() + 1000 * 60 * 60 * 24 * 120).toISOString();
+  // A student's Canvas feed or school calendar may be readable but not marked selected
+  // in Google Calendar. V1 intentionally considers all readable calendars; a calendar
+  // picker will let the student narrow this down in a later pass.
+  const readableCalendars = calendars.slice(0, 50);
+  const responses = await Promise.all(readableCalendars.map(async (calendar) => {
     const query = new URLSearchParams({ timeMin, timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "250" });
     const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendar.id)}/events?${query}`, { headers });
     if (!response.ok) return [] as ImportedCalendarEvent[];
@@ -86,5 +91,5 @@ export async function importCalendarEvents(accessToken: string): Promise<Importe
       end: event.end,
     }));
   }));
-  return responses.flat();
+  return { events: responses.flat(), calendarsScanned: readableCalendars.length };
 }
