@@ -2,300 +2,56 @@
 
 import { FormEvent, useMemo, useState } from "react";
 
-type Task = {
-  id: string;
-  title: string;
-  course: string;
-  due_date: string;
-  estimated_minutes: number;
-  priority: number;
-  course_weight: number;
-};
-
-type Session = {
-  task_id: string;
-  task_title: string;
-  course: string;
-  starts_at: string;
-  ends_at: string;
-  minutes: number;
-  explanation: string;
-};
-
-type Plan = {
-  sessions: Session[];
-  unscheduled: Array<{ task_title: string; course: string; remaining_minutes: number; risk: string; reason: string }>;
-  scheduled_minutes: number;
-  requested_minutes: number;
-  available_minutes: number;
-  risk: "low" | "medium" | "high";
-  explanation: string;
-  warnings: string[];
-};
-
-type DailyAvailability = {
-  day_of_week: number;
-  label: string;
-  start_time: string;
-  end_time: string;
-  is_day_off: boolean;
-};
-
-type ProtectedBlock = {
-  label: string;
-  days_of_week: number[];
-  start_time: string;
-  end_time: string;
-};
+type Task = { id: string; title: string; course: string; due_date: string; estimated_minutes: number; priority: number; course_weight: number };
+type Session = { task_id: string; task_title: string; course: string; starts_at: string; ends_at: string; minutes: number; explanation: string };
+type Plan = { sessions: Session[]; unscheduled: Array<{ task_title: string; course: string; remaining_minutes: number; risk: string; reason: string }>; scheduled_minutes: number; requested_minutes: number; available_minutes: number; risk: "low" | "medium" | "high"; explanation: string; warnings: string[] };
+type DailyAvailability = { day_of_week: number; label: string; start_time: string; end_time: string; is_day_off: boolean };
+type ProtectedBlock = { label: string; days_of_week: number[]; start_time: string; end_time: string };
 
 const initialTasks: Task[] = [
-  { id: "lab-4", title: "Lab 4 — Graph traversal", course: "CSE 101", due_date: "2026-11-19", estimated_minutes: 180, priority: 5, course_weight: 20 },
+  { id: "lab-4", title: "Lab 4 · Graph traversal", course: "CSE 101", due_date: "2026-11-19", estimated_minutes: 180, priority: 5, course_weight: 20 },
   { id: "stats-set", title: "Problem set 7", course: "STAT 131", due_date: "2026-11-20", estimated_minutes: 120, priority: 4, course_weight: 15 },
   { id: "reading", title: "Reading response", course: "CSE 102", due_date: "2026-11-18", estimated_minutes: 45, priority: 3, course_weight: 5 },
 ];
+const week: DailyAvailability[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label, day_of_week) => ({ day_of_week, label, start_time: day_of_week < 5 ? "18:30:00" : "10:00:00", end_time: day_of_week < 5 ? "21:30:00" : "14:00:00", is_day_off: false }));
+const courseColors = ["#B9A5FF", "#74E5C2", "#FFB38A", "#75B6FF"];
 
-const week: DailyAvailability[] = [
-  "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
-].map((label, day_of_week) => ({
-  day_of_week,
-  label,
-  start_time: day_of_week < 5 ? "18:30:00" : "10:00:00",
-  end_time: day_of_week < 5 ? "21:30:00" : "14:00:00",
-  is_day_off: false,
-}));
-
-function hours(minutes: number) {
-  return `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ""}`;
+function formatHours(minutes: number) { const hours = Math.floor(minutes / 60); return `${hours ? `${hours}h ` : ""}${minutes % 60}m`; }
+function Icon({ name }: { name: "spark" | "calendar" | "canvas" | "arrow" | "plus" | "bolt" | "check" | "settings" }) {
+  const paths = {
+    spark: <path d="m12 2 1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Zm7 14 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z" />,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M7 3v4m10-4v4M3 10h18" /></>,
+    canvas: <><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" /><path d="m8 15 2.5-3 2 2 3.5-5M8 9h.01" /></>,
+    arrow: <path d="M5 12h14m-6-6 6 6-6 6" />,
+    plus: <path d="M12 5v14M5 12h14" />,
+    bolt: <path d="m13 2-9 12h7l-1 8 9-12h-7l1-8Z" />,
+    check: <path d="m5 12 4 4L19 6" />,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.2 2.2-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2h-3.2v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-2.2-2.2.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H5v-3.2h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.2-2.2.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V4h3.2v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.2 2.2-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.2V14h-.2a1.7 1.7 0 0 0-1.5 1Z" /></>,
+  };
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
 export default function Home() {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
-  const [plan, setPlan] = useState<Plan | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [draft, setDraft] = useState({ title: "", course: "", due_date: "", estimated_minutes: "60", priority: "3" });
-  const [availability, setAvailability] = useState<DailyAvailability[]>(week);
-  const [protectedBlocks, setProtectedBlocks] = useState<ProtectedBlock[]>([]);
-  const [protectedDraft, setProtectedDraft] = useState<ProtectedBlock>({
-    label: "",
-    days_of_week: [0],
-    start_time: "17:00:00",
-    end_time: "18:00:00",
-  });
-  const [preferences, setPreferences] = useState({
-    sleep_start: "23:00:00",
-    wake_time: "07:00:00",
-    lunch_start: "12:00:00",
-    lunch_end: "13:00:00",
-    dinner_start: "18:00:00",
-    dinner_end: "19:00:00",
-    focus_session_minutes: "50",
-    short_break_minutes: "10",
-    max_study_minutes_per_day: "240",
-  });
-
-  const courses = useMemo(() => [...new Set(tasks.map((task) => task.course))], [tasks]);
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
-
-  function addTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!draft.title.trim() || !draft.course.trim() || !draft.due_date) return;
-    setTasks((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        title: draft.title.trim(),
-        course: draft.course.trim(),
-        due_date: draft.due_date,
-        estimated_minutes: Number(draft.estimated_minutes),
-        priority: Number(draft.priority),
-        course_weight: Number(draft.priority) * 5,
-      },
-    ]);
-    setDraft({ title: "", course: "", due_date: "", estimated_minutes: "60", priority: "3" });
-    setMessage("Added. Generate a plan when you are ready.");
-  }
-
-  async function generatePlan() {
-    setLoading(true);
-    setMessage("");
-    try {
-      const response = await fetch(`${apiUrl}/api/v1/plans/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tasks,
-          recurring_availability: availability.map(({ label, ...item }) => item),
-          protected_time: protectedBlocks,
-          preferences: {
-            sleep_start: preferences.sleep_start,
-            wake_time: preferences.wake_time,
-            meals: [
-              { start_time: preferences.lunch_start, end_time: preferences.lunch_end },
-              { start_time: preferences.dinner_start, end_time: preferences.dinner_end },
-            ],
-            focus_session_minutes: Number(preferences.focus_session_minutes),
-            short_break_minutes: Number(preferences.short_break_minutes),
-            max_study_minutes_per_day: Number(preferences.max_study_minutes_per_day),
-          },
-        }),
-      });
-      if (!response.ok) throw new Error("StudyFlow could not generate your plan.");
-      setPlan(await response.json());
-      setMessage("Your plan is ready. Every session includes an explanation.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not connect to the planning service.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function skipSession(session: Session) {
-    setPlan((current) => current ? {
-      ...current,
-      sessions: current.sessions.filter((item) => item !== session),
-      unscheduled: [...current.unscheduled, {
-        task_title: session.task_title,
-        course: session.course,
-        remaining_minutes: session.minutes,
-        risk: "medium",
-        reason: "This session was skipped. Regenerate your plan to see the best recovery options.",
-      }],
-      risk: "medium",
-    } : current);
-    setMessage("Session marked skipped. Regenerate to build a recovery plan around the remaining work.");
-  }
-
-  function updateAvailability(day: number, changes: Partial<DailyAvailability>) {
-    setAvailability((current) => current.map((item) => item.day_of_week === day ? { ...item, ...changes } : item));
-  }
-
-  function toggleProtectedDay(day: number) {
-    setProtectedDraft((current) => ({
-      ...current,
-      days_of_week: current.days_of_week.includes(day)
-        ? current.days_of_week.filter((item) => item !== day)
-        : [...current.days_of_week, day],
-    }));
-  }
-
-  function addProtectedBlock() {
-    if (!protectedDraft.label.trim() || !protectedDraft.days_of_week.length) return;
-    setProtectedBlocks((current) => [...current, { ...protectedDraft, label: protectedDraft.label.trim() }]);
-    setProtectedDraft({ label: "", days_of_week: [0], start_time: "17:00:00", end_time: "18:00:00" });
-  }
-
-  return (
-    <main className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">StudyFlow</div>
-        <p className="eyebrow">MANUAL MVP</p>
-        <nav aria-label="StudyFlow sections">
-          <a className="active" href="#dashboard">Dashboard</a>
-          <a href="#coursework">Coursework</a>
-          <a href="#plan">Weekly plan</a>
-          <a href="#preferences">Preferences</a>
-        </nav>
-        <div className="sidebar-note">Build a plan around your life—not an imaginary empty calendar.</div>
-      </aside>
-
-      <section className="content">
-        <header id="dashboard" className="page-header">
-          <div>
-            <p className="eyebrow">ADAPTIVE ACADEMIC PLANNING</p>
-            <h1>Know what to do next.</h1>
-            <p>Enter work, generate a realistic plan, and recover when your week changes.</p>
-          </div>
-          <button className="primary" onClick={generatePlan} disabled={loading || tasks.length === 0}>
-            {loading ? "Planning…" : "Generate plan"}
-          </button>
-        </header>
-
-        {message && <p className="notice" role="status">{message}</p>}
-
-        <section className="overview" aria-label="Planning summary">
-          <article className="metric-card">
-            <span>Coursework</span>
-            <strong>{tasks.length}</strong>
-            <small>{courses.length} courses this week</small>
-          </article>
-          <article className="metric-card">
-            <span>Estimated work</span>
-            <strong>{hours(tasks.reduce((total, task) => total + task.estimated_minutes, 0))}</strong>
-            <small>Across everything you entered</small>
-          </article>
-          <article className={`metric-card ${plan?.risk ?? "neutral"}`}>
-            <span>Workload risk</span>
-            <strong>{plan ? plan.risk : "Not checked"}</strong>
-            <small>{plan ? plan.explanation : "Generate a plan to check capacity"}</small>
-          </article>
-        </section>
-
-        <section id="coursework" className="two-column">
-          <article className="panel">
-            <div className="panel-heading"><div><p className="eyebrow">COURSEWORK</p><h2>Your work</h2></div><span>{tasks.length} items</span></div>
-            <div className="task-list">
-              {tasks.map((task) => (
-                <div className="task" key={task.id}>
-                  <div><strong>{task.title}</strong><small>{task.course} · Due {task.due_date}</small></div>
-                  <div className="task-meta"><span>{hours(task.estimated_minutes)}</span><span>Priority {task.priority}</span></div>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <form className="panel form" onSubmit={addTask}>
-            <div className="panel-heading"><div><p className="eyebrow">ADD WORK</p><h2>Capture an assignment</h2></div></div>
-            <label>Title<input required value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Lab 5 — Graph algorithms" /></label>
-            <label>Course<input required value={draft.course} onChange={(event) => setDraft({ ...draft, course: event.target.value })} placeholder="CSE 101" /></label>
-            <div className="form-row"><label>Due date<input required type="date" value={draft.due_date} onChange={(event) => setDraft({ ...draft, due_date: event.target.value })} /></label><label>Minutes<input required min="15" step="15" type="number" value={draft.estimated_minutes} onChange={(event) => setDraft({ ...draft, estimated_minutes: event.target.value })} /></label></div>
-            <label>Importance<select value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value })}><option value="1">Low</option><option value="2">Moderate</option><option value="3">Important</option><option value="4">High</option><option value="5">Critical</option></select></label>
-            <button className="secondary" type="submit">Add to coursework</button>
-          </form>
-        </section>
-
-        <section id="plan" className="plan-section">
-          <div className="section-heading"><div><p className="eyebrow">WEEKLY PLAN</p><h2>Suggested focused sessions</h2></div>{plan && <span className={`risk-chip ${plan.risk}`}>{plan.risk} risk</span>}</div>
-          {!plan ? <div className="empty-state"><strong>Your plan will appear here.</strong><p>StudyFlow uses a deadline-first, explainable baseline. It never hides an overload.</p></div> : (
-            <div className="plan-grid">
-              <article className="panel sessions"><h3>Next sessions</h3>{plan.sessions.length ? plan.sessions.map((session) => <div className="session" key={`${session.task_id}-${session.starts_at}`}><div><strong>{session.task_title}</strong><small>{session.course} · {new Date(session.starts_at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })} · {session.minutes} min</small><p>{session.explanation}</p></div><button className="text-button" onClick={() => skipSession(session)}>Skip</button></div>) : <p className="muted">No sessions fit the availability you provided.</p>}</article>
-              <article className="panel recovery"><h3>Recovery & risk</h3><p><strong>{hours(plan.scheduled_minutes)}</strong> scheduled out of <strong>{hours(plan.requested_minutes)}</strong> requested.</p>{plan.unscheduled.length ? plan.unscheduled.map((item) => <div className="risk-item" key={`${item.task_title}-${item.remaining_minutes}`}><strong>{item.task_title}</strong><span>{hours(item.remaining_minutes)} remain · {item.risk} risk</span><p>{item.reason}</p></div>) : <div className="success">Everything currently fits. Keep checking in as estimates change.</div>}</article>
-            </div>
-          )}
-          {plan?.warnings.length ? <div className="warnings">{plan.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div> : null}
-        </section>
-
-        <section id="preferences" className="preferences">
-          <div className="section-heading"><div><p className="eyebrow">YOUR REAL WEEK</p><h2>Availability & preferences</h2><p>Tell StudyFlow when you can study. It will leave sleep, meals, and commitments alone.</p></div></div>
-          <div className="preference-grid">
-            <div className="settings-card">
-              <h3>Weekly availability</h3>
-              <div className="availability-list">
-                {availability.map((day) => <div className="availability-row" key={day.day_of_week}>
-                  <strong>{day.label.slice(0, 3)}</strong>
-                  <label className="check-label"><input type="checkbox" checked={!day.is_day_off} onChange={(event) => updateAvailability(day.day_of_week, { is_day_off: !event.target.checked })} /> Available</label>
-                  <input aria-label={`${day.label} start time`} type="time" disabled={day.is_day_off} value={day.start_time.slice(0, 5)} onChange={(event) => updateAvailability(day.day_of_week, { start_time: `${event.target.value}:00` })} />
-                  <span>to</span>
-                  <input aria-label={`${day.label} end time`} type="time" disabled={day.is_day_off} value={day.end_time.slice(0, 5)} onChange={(event) => updateAvailability(day.day_of_week, { end_time: `${event.target.value}:00` })} />
-                </div>)}
-              </div>
-            </div>
-            <div className="settings-card settings-form">
-              <h3>Guardrails</h3>
-              <div className="form-row"><label>Sleep starts<input type="time" value={preferences.sleep_start.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, sleep_start: `${event.target.value}:00` })} /></label><label>Wake time<input type="time" value={preferences.wake_time.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, wake_time: `${event.target.value}:00` })} /></label></div>
-              <div className="form-row"><label>Lunch starts<input type="time" value={preferences.lunch_start.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, lunch_start: `${event.target.value}:00` })} /></label><label>Lunch ends<input type="time" value={preferences.lunch_end.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, lunch_end: `${event.target.value}:00` })} /></label></div>
-              <div className="form-row"><label>Dinner starts<input type="time" value={preferences.dinner_start.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, dinner_start: `${event.target.value}:00` })} /></label><label>Dinner ends<input type="time" value={preferences.dinner_end.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, dinner_end: `${event.target.value}:00` })} /></label></div>
-              <div className="form-row"><label>Focus minutes<input min="25" max="120" type="number" value={preferences.focus_session_minutes} onChange={(event) => setPreferences({ ...preferences, focus_session_minutes: event.target.value })} /></label><label>Daily study cap<input min="60" max="720" step="30" type="number" value={preferences.max_study_minutes_per_day} onChange={(event) => setPreferences({ ...preferences, max_study_minutes_per_day: event.target.value })} /></label></div>
-            </div>
-          </div>
-          <div className="settings-card protected-card">
-            <div className="panel-heading"><div><h3>Protected commitments</h3><p className="muted">Work, meetings, practice—anything StudyFlow must never schedule over.</p></div></div>
-            <div className="protected-form"><input aria-label="Commitment name" value={protectedDraft.label} onChange={(event) => setProtectedDraft({ ...protectedDraft, label: event.target.value })} placeholder="e.g. Club meeting" /><input aria-label="Commitment start time" type="time" value={protectedDraft.start_time.slice(0, 5)} onChange={(event) => setProtectedDraft({ ...protectedDraft, start_time: `${event.target.value}:00` })} /><input aria-label="Commitment end time" type="time" value={protectedDraft.end_time.slice(0, 5)} onChange={(event) => setProtectedDraft({ ...protectedDraft, end_time: `${event.target.value}:00` })} /><button className="secondary" type="button" onClick={addProtectedBlock}>Protect time</button></div>
-            <div className="day-picker">{week.map((day) => <label key={day.day_of_week}><input type="checkbox" checked={protectedDraft.days_of_week.includes(day.day_of_week)} onChange={() => toggleProtectedDay(day.day_of_week)} /> {day.label.slice(0, 3)}</label>)}</div>
-            {protectedBlocks.length ? <div className="protected-list">{protectedBlocks.map((block, index) => <div key={`${block.label}-${index}`}><span><strong>{block.label}</strong> · {block.days_of_week.map((day) => week[day].label.slice(0, 3)).join(", ")} · {block.start_time.slice(0, 5)}–{block.end_time.slice(0, 5)}</span><button className="text-button" onClick={() => setProtectedBlocks((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div>)}</div> : <p className="muted">No protected commitments yet.</p>}
-          </div>
-        </section>
-      </section>
-    </main>
-  );
+  const [tasks, setTasks] = useState<Task[]>(initialTasks); const [plan, setPlan] = useState<Plan | null>(null); const [loading, setLoading] = useState(false); const [message, setMessage] = useState("");
+  const [showCapture, setShowCapture] = useState(false); const [showPreferences, setShowPreferences] = useState(false);
+  const [draft, setDraft] = useState({ title: "", course: "", due_date: "", estimated_minutes: "60", priority: "3" }); const [availability, setAvailability] = useState<DailyAvailability[]>(week);
+  const [protectedBlocks, setProtectedBlocks] = useState<ProtectedBlock[]>([]); const [protectedDraft, setProtectedDraft] = useState<ProtectedBlock>({ label: "", days_of_week: [0], start_time: "17:00:00", end_time: "18:00:00" });
+  const [preferences, setPreferences] = useState({ sleep_start: "23:00:00", wake_time: "07:00:00", lunch_start: "12:00:00", lunch_end: "13:00:00", dinner_start: "18:00:00", dinner_end: "19:00:00", focus_session_minutes: "50", short_break_minutes: "10", max_study_minutes_per_day: "240" });
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000"; const requestedMinutes = tasks.reduce((total, task) => total + task.estimated_minutes, 0); const courses = useMemo(() => [...new Set(tasks.map((task) => task.course))], [tasks]);
+  function addTask(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!draft.title.trim() || !draft.course.trim() || !draft.due_date) return; setTasks((current) => [...current, { id: crypto.randomUUID(), title: draft.title.trim(), course: draft.course.trim(), due_date: draft.due_date, estimated_minutes: Number(draft.estimated_minutes), priority: Number(draft.priority), course_weight: Number(draft.priority) * 5 }]); setDraft({ title: "", course: "", due_date: "", estimated_minutes: "60", priority: "3" }); setShowCapture(false); setMessage("Added to your workspace. Generate a new flow when you’re ready."); }
+  async function generatePlan() { setLoading(true); setMessage(""); try { const response = await fetch(`${apiUrl}/api/v1/plans/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tasks, recurring_availability: availability.map(({ label, ...item }) => item), protected_time: protectedBlocks, preferences: { sleep_start: preferences.sleep_start, wake_time: preferences.wake_time, meals: [{ start_time: preferences.lunch_start, end_time: preferences.lunch_end }, { start_time: preferences.dinner_start, end_time: preferences.dinner_end }], focus_session_minutes: Number(preferences.focus_session_minutes), short_break_minutes: Number(preferences.short_break_minutes), max_study_minutes_per_day: Number(preferences.max_study_minutes_per_day) } }) }); if (!response.ok) throw new Error("StudyFlow couldn’t build the flow for this week."); setPlan(await response.json()); setMessage("Your flow is ready. Every session protects the time you set aside."); } catch (error) { setMessage(error instanceof Error ? error.message : "Couldn’t connect to the planning service."); } finally { setLoading(false); } }
+  function updateAvailability(day: number, changes: Partial<DailyAvailability>) { setAvailability((current) => current.map((item) => item.day_of_week === day ? { ...item, ...changes } : item)); }
+  function toggleProtectedDay(day: number) { setProtectedDraft((current) => ({ ...current, days_of_week: current.days_of_week.includes(day) ? current.days_of_week.filter((item) => item !== day) : [...current.days_of_week, day] })); }
+  function addProtectedBlock() { if (!protectedDraft.label.trim() || !protectedDraft.days_of_week.length) return; setProtectedBlocks((current) => [...current, { ...protectedDraft, label: protectedDraft.label.trim() }]); setProtectedDraft({ label: "", days_of_week: [0], start_time: "17:00:00", end_time: "18:00:00" }); }
+  function connectNotice(source: "Google Calendar" | "Canvas") { setMessage(source === "Google Calendar" ? "Google Calendar import is next: add a free Google OAuth client ID, then this securely reads busy time." : "Canvas setup will be one step: subscribe to its calendar feed in Google Calendar. StudyFlow then picks up assignments and events automatically."); }
+  const firstSession = plan?.sessions[0];
+  return <main className="flow-shell"><div className="ambient ambient-one" /><div className="ambient ambient-two" /><div className="grain" />
+    <aside className="rail"><div className="logo"><span><Icon name="spark" /></span>StudyFlow</div><div className="rail-label">YOUR SPACE</div><nav><a className="active" href="#today"><Icon name="bolt" />Today</a><a href="#work"><Icon name="canvas" />Workload</a><a href="#connections"><Icon name="calendar" />Connections</a><a href="#preferences"><Icon name="settings" />Preferences</a></nav><div className="rail-footer"><div className="identity">JK</div><div><strong>Jishnu</strong><small>UCSC · Student</small></div></div></aside>
+    <section className="workspace"><header className="topbar"><div><p className="kicker">SATURDAY · NOVEMBER 15</p><h1>Make room for <em>what matters.</em></h1></div><button className="glow-button" onClick={generatePlan} disabled={loading}><Icon name="spark" />{loading ? "Building flow…" : "Generate my flow"}</button></header>{message && <div className="toast" role="status"><Icon name="check" />{message}</div>}
+      <section id="connections" className="connection-ribbon"><div className="ribbon-copy"><span className="orb"><Icon name="spark" /></span><div><p className="kicker">ONE-TIME SETUP</p><h2>Your life, already in motion.</h2><p>Connect once. StudyFlow turns calendar reality into a plan—no schedule transcription.</p></div></div><div className="connection-actions"><button className="connection-card" onClick={() => connectNotice("Google Calendar")}><span className="google-mark">G</span><div><strong>Google Calendar</strong><small>Read-only · import busy time</small></div><Icon name="arrow" /></button><button className="connection-card canvas-card" onClick={() => connectNotice("Canvas")}><span className="canvas-mark"><Icon name="canvas" /></span><div><strong>Canvas → Calendar</strong><small>Assignments + course events</small></div><Icon name="arrow" /></button></div></section>
+      <section id="today" className="hero-grid"><article className="now-card"><div className="card-eyebrow"><span className="live-dot" /> YOUR NEXT MOVE</div><div className="now-main"><div className="course-pill purple">{firstSession?.course ?? "STUDYFLOW"}</div><h2>{firstSession?.task_title ?? "Build your first flow"}</h2><p>{firstSession ? `${firstSession.minutes} minutes protected for focused work.` : "Connect your schedule and let StudyFlow make the calls."}</p></div><div className="now-footer"><div><span>Start</span><strong>{firstSession ? new Date(firstSession.starts_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "When ready"}</strong></div><div><span>Why now</span><strong>{plan ? "Deadline + impact" : "Your week, first"}</strong></div><button onClick={generatePlan} aria-label="Generate plan"><Icon name="arrow" /></button></div></article><article className="pulse-card"><div className="card-eyebrow">WEEKLY PULSE <span>{plan ? `${plan.risk} risk` : "waiting"}</span></div><div className="pulse-number">{plan ? Math.round((plan.scheduled_minutes / Math.max(plan.requested_minutes, 1)) * 100) : 0}<small>%</small></div><p>{plan ? `${formatHours(plan.scheduled_minutes)} placed into your real week.` : "Your plan will show up here."}</p><div className="progress-track"><span style={{ width: `${plan ? Math.min(100, (plan.scheduled_minutes / Math.max(plan.requested_minutes, 1)) * 100) : 0}%` }} /></div></article><article className="mini-stats"><div><span>Due soon</span><strong>{tasks.length}</strong><small>across {courses.length} courses</small></div><div><span>Workload</span><strong>{formatHours(requestedMinutes)}</strong><small>estimated focus</small></div></article></section>
+      <section id="work" className="content-grid"><article className="surface timeline-surface"><div className="surface-head"><div><p className="kicker">THE FLOW</p><h2>Tonight, with breathing room.</h2></div><div className="legend"><span><i className="purple-dot" /> Deep work</span><span><i className="mint-dot" /> Open time</span></div></div><div className="timeline"><div className="time-labels"><span>6 PM</span><span>7 PM</span><span>8 PM</span><span>9 PM</span></div><div className="timeline-track"><div className="study-block study-one"><span>6:30</span><strong>{firstSession?.task_title ?? "Your first session"}</strong><small>{firstSession?.minutes ?? 50} min · {firstSession?.course ?? "CSE 101"}</small></div><div className="timeline-break">space to reset</div><div className="study-block study-two"><span>7:40</span><strong>{plan?.sessions[1]?.task_title ?? "Your second session"}</strong><small>{plan?.sessions[1]?.minutes ?? 50} min · {plan?.sessions[1]?.course ?? "STAT 131"}</small></div></div></div><button className="quiet-action" onClick={generatePlan}>See full plan <Icon name="arrow" /></button></article><article className="surface workload-surface"><div className="surface-head"><div><p className="kicker">UPCOMING</p><h2>Keep the important things close.</h2></div><button className="icon-button" onClick={() => setShowCapture((current) => !current)} aria-label="Add coursework"><Icon name="plus" /></button></div><div className="task-stack">{tasks.slice(0, 4).map((task, index) => <div className="task-row" key={task.id}><span className="task-color" style={{ background: courseColors[index % courseColors.length] }} /><div><strong>{task.title}</strong><small>{task.course} · due {task.due_date.slice(5).replace("-", "/")}</small></div><span className="task-time">{formatHours(task.estimated_minutes)}</span></div>)}</div><button className="quiet-action" onClick={() => setShowCapture((current) => !current)}>Add something manually <Icon name="plus" /></button>{showCapture && <form className="capture-form" onSubmit={addTask}><input required value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="What needs doing?" /><div><input required value={draft.course} onChange={(event) => setDraft({ ...draft, course: event.target.value })} placeholder="Course" /><input required type="date" value={draft.due_date} onChange={(event) => setDraft({ ...draft, due_date: event.target.value })} /><input required min="15" step="15" type="number" value={draft.estimated_minutes} onChange={(event) => setDraft({ ...draft, estimated_minutes: event.target.value })} aria-label="Minutes" /></div><button className="glow-button" type="submit">Add to flow</button></form>}</article></section>
+      {plan?.warnings.length ? <section className="warnings">{plan.warnings.map((warning) => <p key={warning}><span>!</span>{warning}</p>)}</section> : null}
+      <section id="preferences" className="preferences-panel"><button className="preferences-trigger" onClick={() => setShowPreferences((current) => !current)}><span><Icon name="settings" /></span><div><p className="kicker">GUARDRAILS</p><strong>Shape a plan around your actual life</strong><small>Availability, sleep, meals, work, and commitments</small></div><Icon name="arrow" /></button>{showPreferences && <div className="preferences-body"><div className="availability-editor"><h3>When can you study?</h3>{availability.map((day) => <div className="availability-row" key={day.day_of_week}><strong>{day.label}</strong><label><input type="checkbox" checked={!day.is_day_off} onChange={(event) => updateAvailability(day.day_of_week, { is_day_off: !event.target.checked })} />Available</label><input type="time" disabled={day.is_day_off} value={day.start_time.slice(0, 5)} onChange={(event) => updateAvailability(day.day_of_week, { start_time: `${event.target.value}:00` })} /><span>to</span><input type="time" disabled={day.is_day_off} value={day.end_time.slice(0, 5)} onChange={(event) => updateAvailability(day.day_of_week, { end_time: `${event.target.value}:00` })} /></div>)}</div><div className="guardrail-editor"><h3>Protect your rhythm</h3><div className="field-grid"><label>Sleep<input type="time" value={preferences.sleep_start.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, sleep_start: `${event.target.value}:00` })} /></label><label>Wake<input type="time" value={preferences.wake_time.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, wake_time: `${event.target.value}:00` })} /></label><label>Focus block<input min="25" max="120" type="number" value={preferences.focus_session_minutes} onChange={(event) => setPreferences({ ...preferences, focus_session_minutes: event.target.value })} /></label><label>Daily cap<input min="60" max="720" step="30" type="number" value={preferences.max_study_minutes_per_day} onChange={(event) => setPreferences({ ...preferences, max_study_minutes_per_day: event.target.value })} /></label></div><div className="protected-form"><input value={protectedDraft.label} onChange={(event) => setProtectedDraft({ ...protectedDraft, label: event.target.value })} placeholder="Protect a commitment" /><input type="time" value={protectedDraft.start_time.slice(0, 5)} onChange={(event) => setProtectedDraft({ ...protectedDraft, start_time: `${event.target.value}:00` })} /><input type="time" value={protectedDraft.end_time.slice(0, 5)} onChange={(event) => setProtectedDraft({ ...protectedDraft, end_time: `${event.target.value}:00` })} /><button type="button" onClick={addProtectedBlock}><Icon name="plus" /></button></div><div className="day-pills">{week.map((day) => <button type="button" className={protectedDraft.days_of_week.includes(day.day_of_week) ? "selected" : ""} onClick={() => toggleProtectedDay(day.day_of_week)} key={day.day_of_week}>{day.label}</button>)}</div>{protectedBlocks.map((block, index) => <div className="protected-item" key={`${block.label}-${index}`}><span>{block.label} · {block.start_time.slice(0, 5)}–{block.end_time.slice(0, 5)}</span><button onClick={() => setProtectedBlocks((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div>)}</div></div>}</section>
+    </section></main>;
 }
