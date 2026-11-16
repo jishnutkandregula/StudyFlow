@@ -7,5 +7,7 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}</body></html>;
+  // Browser extensions such as Grammarly can add attributes to <body> before React
+  // hydrates. The app does not depend on those attributes, so ignore that mismatch.
+  return <html lang="en" suppressHydrationWarning><body suppressHydrationWarning>{children}</body></html>;
 }
