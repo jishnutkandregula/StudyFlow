@@ -184,6 +184,7 @@ cd apps/web && npm run typecheck && npm run build
 ## Documentation
 
 - [Product vision and roadmap](docs/PRODUCT_VISION.md) — source of truth
+- [Deployment plan](docs/DEPLOYMENT.md)
 - [Product specification](docs/PRODUCT.md)
 - [User flows](docs/USER_FLOWS.md)
 - [Target market](docs/TARGET_MARKET.md)
