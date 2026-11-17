@@ -23,7 +23,7 @@ export function ConnectionRibbon(props: Props) {
       : "Read-only · import busy time";
 
   const canvasDetail = canvas
-    ? `${plural(canvasAssignments, "assignment")} · synced ${relativeTime(canvas.lastSynced, now)}`
+    ? `${plural(canvasAssignments, "assignment")} · ${canvas.lastSynced ? `synced ${relativeTime(canvas.lastSynced, now)}` : "not synced yet"}`
     : "Import courses · assignments";
 
   return (

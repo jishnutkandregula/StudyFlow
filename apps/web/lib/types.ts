@@ -92,9 +92,17 @@ export type Preferences = {
 export type CanvasConnection = {
   displayName: string;
   canvasUrl: string;
-  courseCount: number;
-  lastSynced: Date;
+  /** Null when connected but not yet synced. */
+  lastSynced: Date | null;
 };
+
+export type CompletedTask = { id: string; title: string; course: string };
+
+export type SaveStatus =
+  | { state: "loading" }
+  | { state: "saved"; at: Date | null }
+  | { state: "saving" }
+  | { state: "error"; message: string };
 
 export type CalendarConnection = {
   busyEvents: number;

@@ -1,4 +1,5 @@
-import { initials } from "../lib/format";
+import { initials, relativeTime } from "../lib/format";
+import type { SaveStatus } from "../lib/types";
 import { Icon } from "./Icon";
 
 const links = [
@@ -8,7 +9,22 @@ const links = [
   { href: "#preferences", icon: "settings", label: "Preferences" },
 ] as const;
 
-export function Sidebar({ studentName }: { studentName: string | null }) {
+function saveLabel(status: SaveStatus, now: Date | null): string {
+  switch (status.state) {
+    case "loading":
+      return "Loading your workspace…";
+    case "saving":
+      return "Saving…";
+    case "error":
+      return "Not saved. Retrying on next change";
+    case "saved":
+      return status.at ? `Saved ${relativeTime(status.at, now)}` : "Changes save automatically";
+  }
+}
+
+type Props = { studentName: string | null; saveStatus: SaveStatus; now: Date | null };
+
+export function Sidebar({ studentName, saveStatus, now }: Props) {
   return (
     <aside className="rail">
       <div className="logo">
@@ -26,8 +42,10 @@ export function Sidebar({ studentName }: { studentName: string | null }) {
       <div className="rail-footer">
         <div className="identity" aria-hidden="true">{studentName ? initials(studentName) : "?"}</div>
         <div>
-          <strong>{studentName ?? "Local session"}</strong>
-          <small>{studentName ? "Canvas connected" : "Nothing is saved yet"}</small>
+          <strong>{studentName ?? "Your workspace"}</strong>
+          <small className={`save-status ${saveStatus.state}`} role="status" suppressHydrationWarning>
+            {saveLabel(saveStatus, now)}
+          </small>
         </div>
       </div>
     </aside>

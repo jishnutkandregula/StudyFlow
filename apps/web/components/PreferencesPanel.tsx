@@ -11,6 +11,7 @@ type Props = {
   onPreferencesChange: (preferences: Preferences) => void;
   protectedBlocks: ProtectedBlock[];
   onProtectedBlocksChange: (blocks: ProtectedBlock[]) => void;
+  onDeleteData: () => Promise<void>;
 };
 
 const emptyBlock: ProtectedBlock = { label: "", days_of_week: [0], start_time: "17:00:00", end_time: "18:00:00" };
@@ -22,6 +23,8 @@ export function PreferencesPanel(props: Props) {
   const { availability, preferences, protectedBlocks } = props;
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ProtectedBlock>(emptyBlock);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const set = (changes: Partial<Preferences>) => props.onPreferencesChange({ ...preferences, ...changes });
 
   function toggleDay(day: number) {
@@ -102,6 +105,37 @@ export function PreferencesPanel(props: Props) {
               </div>
             ))}
           </fieldset>
+          <section className="data-controls" aria-labelledby="data-heading">
+            <h3 id="data-heading">Your data</h3>
+            <p>
+              StudyFlow saves your coursework, settings, and plan for this browser so they survive a reload. Calendar
+              event titles are never saved, only when you’re busy. A connected Canvas token is stored encrypted and is
+              never sent back to your browser.
+            </p>
+            {confirmDelete ? (
+              <div className="confirm-row" role="group" aria-label="Confirm delete">
+                <span>Delete all saved coursework, settings, plans, and the Canvas connection? This can’t be undone.</span>
+                <button
+                  className="danger-button"
+                  disabled={deleting}
+                  onClick={async () => {
+                    setDeleting(true);
+                    try {
+                      await props.onDeleteData();
+                    } finally {
+                      setDeleting(false);
+                      setConfirmDelete(false);
+                    }
+                  }}
+                >
+                  {deleting ? "Deleting…" : "Delete everything"}
+                </button>
+                <button className="quiet-action" onClick={() => setConfirmDelete(false)}>Cancel</button>
+              </div>
+            ) : (
+              <button className="danger-link" onClick={() => setConfirmDelete(true)}>Delete my StudyFlow data</button>
+            )}
+          </section>
         </div>
       )}
     </section>

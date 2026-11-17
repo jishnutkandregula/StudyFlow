@@ -1,7 +1,9 @@
-// Canvas LMS frontend client — calls the StudyFlow backend only.
-// The access token is never sent directly to Canvas, never stored in
-// browser storage (localStorage / sessionStorage / cookies), and
-// never placed in a URL parameter or query string.
+// Canvas LMS client — talks to the StudyFlow API only, never to Canvas directly.
+// The access token is sent exactly once, to /connect. The API encrypts and keeps
+// it server-side; it never comes back to the browser and is never put in
+// browser storage or a URL.
+
+import { apiFetch } from "./http";
 
 export type CanvasCourse = {
   id: string;
@@ -31,75 +33,28 @@ export type CanvasSyncResult = {
   assignments_found: number;
 };
 
-type ApiErrorPayload = { code?: string; message?: string };
-
-export class CanvasClientError extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = "CanvasClientError";
-  }
-}
-
-async function post<T>(
-  apiUrl: string,
-  path: string,
-  body: unknown,
-): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${apiUrl}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new CanvasClientError(
-      "UNREACHABLE",
-      "Could not reach the StudyFlow backend. Is it running?",
-    );
-  }
-
-  if (!response.ok) {
-    let code = "CANVAS_ERROR";
-    let message = "An unexpected error occurred connecting to Canvas.";
-    try {
-      const data = (await response.json()) as ApiErrorPayload;
-      if (data.code) code = data.code;
-      if (data.message) message = data.message;
-    } catch {
-      // fall through to defaults
-    }
-    throw new CanvasClientError(code, message);
-  }
-
-  return response.json() as Promise<T>;
-}
-
-/** Verify a Canvas URL + access token and return the student's name + course list. */
-export async function connectCanvas(
-  apiUrl: string,
-  canvasUrl: string,
-  accessToken: string,
-): Promise<CanvasConnectResult> {
-  return post<CanvasConnectResult>(apiUrl, "/api/v1/canvas/connect", {
-    canvas_url: canvasUrl,
-    access_token: accessToken,
+/** Verify a Canvas URL + token; the API stores the token and returns courses. */
+export function connectCanvas(canvasUrl: string, accessToken: string): Promise<CanvasConnectResult> {
+  return apiFetch("/api/v1/canvas/connect", {
+    method: "POST",
+    json: { canvas_url: canvasUrl, access_token: accessToken },
   });
 }
 
-/** Fetch upcoming assignments for the given courses (or all if omitted). */
-export async function syncCanvas(
-  apiUrl: string,
-  canvasUrl: string,
-  accessToken: string,
-  courseIds?: string[],
-): Promise<CanvasSyncResult> {
-  return post<CanvasSyncResult>(apiUrl, "/api/v1/canvas/sync", {
-    canvas_url: canvasUrl,
-    access_token: accessToken,
-    course_ids: courseIds ?? null,
-  });
+/** List courses with the saved connection. */
+export function listCanvasCourses(): Promise<CanvasConnectResult> {
+  return apiFetch("/api/v1/canvas/courses");
 }
+
+/** Fetch upcoming assignments with the saved connection. */
+export function syncCanvas(courseIds?: string[]): Promise<CanvasSyncResult> {
+  return apiFetch("/api/v1/canvas/sync", { method: "POST", json: { course_ids: courseIds ?? null } });
+}
+
+/** Delete the saved token and connection details. */
+export function disconnectCanvas(): Promise<void> {
+  return apiFetch("/api/v1/canvas/connection", { method: "DELETE" });
+}
+
+/** Error codes meaning the saved connection is gone and the student must reconnect. */
+export const RECONNECT_CODES = new Set(["unauthorized", "not_connected"]);

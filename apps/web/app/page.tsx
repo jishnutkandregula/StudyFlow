@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CanvasErrorBoundary } from "../components/canvas/CanvasErrorBoundary";
 import { type CanvasImport, CanvasModal } from "../components/canvas/CanvasModal";
 import { ConnectionRibbon } from "../components/ConnectionRibbon";
@@ -15,25 +15,26 @@ import { courseColorMap } from "../lib/courseColors";
 import { formatHours, plural, toDateKey, toLocalParts } from "../lib/format";
 import { importCalendarEvents, requestCalendarToken } from "../lib/googleCalendar";
 import { diffPlans, generatePlan, type PlanInputs, planInputsKey } from "../lib/planApi";
+import { deleteWorkspace, loadWorkspace, saveWorkspace, type WorkspaceState } from "../lib/workspaceApi";
 import type {
   BusyBlock,
   CalendarConnection,
   CanvasConnection,
+  CompletedTask,
   DailyAvailability,
   LockedSession,
   Plan,
   PlanChange,
   Preferences,
   ProtectedBlock,
+  SaveStatus,
   Session,
   Task,
   Toast,
 } from "../lib/types";
-
-type CompletedTask = { id: string; title: string; course: string };
 import { useNow } from "../lib/useNow";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const SAVE_DEBOUNCE_MS = 700;
 
 const defaultWeek: DailyAvailability[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label, day) => ({
   day_of_week: day,
@@ -77,6 +78,9 @@ export default function Home() {
   const [calendarImporting, setCalendarImporting] = useState(false);
   const [canvas, setCanvas] = useState<CanvasConnection | null>(null);
   const [canvasOpen, setCanvasOpen] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ state: "loading" });
+  const hydrated = saveStatus.state !== "loading";
+  const lastSavedJson = useRef<string | null>(null);
 
   const inputs: PlanInputs = { tasks, availability, protectedBlocks, busyTime, preferences, lockedSessions, blockedDates };
   const todayKey = now ? toDateKey(now) : null;
@@ -84,6 +88,88 @@ export default function Home() {
   const stale = Boolean(plan) && currentKey !== planKey;
   const courseColor = useMemo(() => courseColorMap(tasks.map((task) => task.course)), [tasks]);
   const canvasTasks = tasks.filter((task) => task.source === "canvas");
+
+  // Load this browser's saved workspace once. The server starts a session if there isn't one.
+  useEffect(() => {
+    let cancelled = false;
+    loadWorkspace()
+      .then(({ state, canvas: savedCanvas, savedAt }) => {
+        if (cancelled) return;
+        if (state) {
+          if (state.tasks) setTasks(state.tasks);
+          if (state.completed) setCompleted(state.completed);
+          if (state.availability) setAvailability(state.availability);
+          if (state.preferences) setPreferences({ ...defaultPreferences, ...state.preferences });
+          if (state.protectedBlocks) setProtectedBlocks(state.protectedBlocks);
+          if (state.busyTime) setBusyTime(state.busyTime);
+          if (state.lockedSessions) setLockedSessions(state.lockedSessions);
+          if (state.blockedDates) setBlockedDates(state.blockedDates);
+          setCalendar(state.calendar ?? null);
+          setPlan(state.plan ?? null);
+          setPlanKey(state.planKey ?? "");
+        }
+        setCanvas(savedCanvas);
+        setSaveStatus({ state: "saved", at: savedAt });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSaveStatus({ state: "error", message: "Couldn’t load your saved workspace." });
+        setToast({ text: "Couldn’t load your saved workspace. Changes won’t be saved until the API is reachable.", tone: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const workspace: WorkspaceState = {
+    tasks,
+    completed,
+    availability,
+    preferences,
+    protectedBlocks,
+    busyTime,
+    lockedSessions,
+    blockedDates,
+    calendar,
+    plan,
+    planKey,
+  };
+  const workspaceJson = JSON.stringify(workspace);
+  const latestWorkspace = useRef(workspace);
+  latestWorkspace.current = workspace;
+
+  // Autosave: debounce changes, then PUT the whole workspace. Skips the initial load.
+  useEffect(() => {
+    if (!hydrated) return;
+    if (lastSavedJson.current === null) {
+      lastSavedJson.current = workspaceJson;
+      return;
+    }
+    if (workspaceJson === lastSavedJson.current) return;
+    const id = window.setTimeout(() => {
+      setSaveStatus({ state: "saving" });
+      saveWorkspace(latestWorkspace.current)
+        .then((at) => {
+          lastSavedJson.current = workspaceJson;
+          setSaveStatus({ state: "saved", at });
+        })
+        .catch((error) => {
+          setSaveStatus({ state: "error", message: error instanceof Error ? error.message : "Save failed." });
+        });
+    }, SAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(id);
+  }, [workspaceJson, hydrated]);
+
+  async function handleDeleteData() {
+    try {
+      await deleteWorkspace();
+    } catch (error) {
+      setToast({ text: error instanceof Error ? error.message : "Couldn’t delete your data.", tone: "error" });
+      return;
+    }
+    // Start completely fresh: a reload creates a new, empty session.
+    window.location.reload();
+  }
 
   useEffect(() => {
     if (!toast || toast.tone === "error") return;
@@ -106,7 +192,7 @@ export default function Home() {
     setLoading(true);
     if (!notice) setToast(null);
     try {
-      const result = await generatePlan(apiUrl, next);
+      const result = await generatePlan(next);
       setPlan(result);
       setPlanKey(planInputsKey(next));
       setChange(previous && cause ? diffPlans(previous, result, cause) : null);
@@ -269,9 +355,9 @@ export default function Home() {
       <div className="ambient ambient-one" />
       <div className="ambient ambient-two" />
       <div className="grain" />
-      <Sidebar studentName={canvas?.displayName ?? null} />
+      <Sidebar studentName={canvas?.displayName ?? null} saveStatus={saveStatus} now={now} />
 
-      <section className="workspace">
+      <section className={`workspace${hydrated ? "" : " is-loading"}`} aria-busy={!hydrated}>
         <Topbar now={now} loading={loading} hasTasks={tasks.length > 0} hasPlan={Boolean(plan)} stale={stale} onGenerate={handleGenerate} />
 
         <div className="toast-region" aria-live="polite">
@@ -366,19 +452,20 @@ export default function Home() {
           onPreferencesChange={setPreferences}
           protectedBlocks={protectedBlocks}
           onProtectedBlocksChange={setProtectedBlocks}
+          onDeleteData={handleDeleteData}
         />
       </section>
 
       {canvasOpen && (
         <CanvasErrorBoundary onClose={closeCanvas}>
           <CanvasModal
-            apiUrl={apiUrl}
             now={now}
             connection={canvas}
             existingTasks={canvasTasks}
             completedIds={completed.map((item) => item.id)}
             onClose={closeCanvas}
             onConnected={setCanvas}
+            onDisconnected={() => setCanvas(null)}
             onImport={handleCanvasImport}
           />
         </CanvasErrorBoundary>

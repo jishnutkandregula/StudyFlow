@@ -1,4 +1,5 @@
 import { localNowIso } from "./format";
+import { ApiError, apiFetch } from "./http";
 import type {
   BusyBlock,
   DailyAvailability,
@@ -57,25 +58,23 @@ export function buildPlanRequest(inputs: PlanInputs) {
 
 /** A stable fingerprint of planner inputs, used to tell when a plan is out of date. */
 export function planInputsKey(inputs: PlanInputs): string {
-  return JSON.stringify(buildPlanRequest(inputs));
+  // Busy-event titles aren't saved, so they must not make a reloaded plan look stale.
+  const request = buildPlanRequest(inputs);
+  return JSON.stringify({ ...request, busy_time: request.busy_time.map(({ label: _label, ...block }) => block) });
 }
 
-export async function generatePlan(apiUrl: string, inputs: PlanInputs): Promise<Plan> {
-  let response: Response;
+export async function generatePlan(inputs: PlanInputs): Promise<Plan> {
   try {
-    response = await fetch(`${apiUrl}/api/v1/plans/generate`, {
+    return await apiFetch<Plan>("/api/v1/plans/generate", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...buildPlanRequest(inputs), planning_start: localNowIso() }),
+      json: { ...buildPlanRequest(inputs), planning_start: localNowIso() },
     });
-  } catch {
-    throw new Error("Couldn’t reach the StudyFlow planning service. Is the API running?");
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 422) {
+      throw new Error("Some planning settings are invalid — check that every time range ends after it starts.");
+    }
+    throw error;
   }
-  if (response.status === 422) {
-    throw new Error("Some planning settings are invalid — check that every time range ends after it starts.");
-  }
-  if (!response.ok) throw new Error("StudyFlow couldn’t build a plan right now. Try again in a moment.");
-  return (await response.json()) as Plan;
 }
 
 /** Summarize what changed between two plans for the same student. */

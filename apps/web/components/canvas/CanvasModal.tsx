@@ -5,14 +5,18 @@ import {
   type CanvasAssignment,
   type CanvasCourse,
   connectCanvas,
+  disconnectCanvas,
+  listCanvasCourses,
+  RECONNECT_CODES,
   syncCanvas,
 } from "../../lib/canvasClient";
+import { ApiError } from "../../lib/http";
 import { estimateFromPoints, plural, relativeTime, toLocalParts } from "../../lib/format";
 import type { CanvasConnection, Task } from "../../lib/types";
 import { Icon } from "../Icon";
 import { AssignmentReview, isSchedulable, type ReviewItem } from "./AssignmentReview";
 
-type Step = "url" | "token" | "connecting" | "courses" | "syncing" | "assignments" | "done" | "error";
+type Step = "url" | "token" | "connecting" | "loading" | "courses" | "syncing" | "assignments" | "done" | "error";
 
 export type CanvasImport = {
   /** Canvas tasks to keep in the plan after review. */
@@ -22,7 +26,6 @@ export type CanvasImport = {
 };
 
 type Props = {
-  apiUrl: string;
   now: Date | null;
   connection: CanvasConnection | null;
   existingTasks: Task[];
@@ -30,6 +33,8 @@ type Props = {
   completedIds: string[];
   onClose: () => void;
   onConnected: (connection: CanvasConnection) => void;
+  /** The saved connection is gone (disconnected, or Canvas rejected the token). */
+  onDisconnected: () => void;
   onImport: (result: CanvasImport) => void;
 };
 
@@ -87,11 +92,11 @@ function toTask(item: ReviewItem, courses: CanvasCourse[]): Task {
   };
 }
 
-export function CanvasModal({ apiUrl, now, connection, existingTasks, completedIds, onClose, onConnected, onImport }: Props) {
+export function CanvasModal({ now, connection, existingTasks, completedIds, onClose, onConnected, onDisconnected, onImport }: Props) {
   const [step, setStep] = useState<Step>(connection ? "done" : "url");
   const [errorReturnStep, setErrorReturnStep] = useState<Step>("token");
   const [canvasUrl, setCanvasUrl] = useState(connection?.canvasUrl ?? "");
-  // The token lives only in this component's memory and disappears when the modal closes.
+  // The token is held only until /connect accepts it; after that the API keeps it, encrypted.
   const [token, setToken] = useState("");
   const [displayName, setDisplayName] = useState(connection?.displayName ?? "");
   const [courses, setCourses] = useState<CanvasCourse[]>([]);
@@ -99,33 +104,55 @@ export function CanvasModal({ apiUrl, now, connection, existingTasks, completedI
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [error, setError] = useState("");
   const [summary, setSummary] = useState("");
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && step !== "connecting" && step !== "syncing") onClose();
+      if (event.key === "Escape" && !["connecting", "loading", "syncing"].includes(step)) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [step, onClose]);
 
-  function fail(message: string, returnTo: Step) {
-    setError(message);
+  function fail(err: unknown, fallback: string, returnTo: Step) {
+    if (err instanceof ApiError && RECONNECT_CODES.has(err.code) && returnTo !== "token") {
+      // The saved token no longer works: the API already forgot it.
+      onDisconnected();
+      returnTo = "token";
+    }
+    setError(err instanceof Error ? err.message : fallback);
     setErrorReturnStep(returnTo);
     setStep("error");
+  }
+
+  function showCourses(list: CanvasCourse[]) {
+    setCourses(list);
+    setSelectedCourses(new Set(list.map((course) => course.id)));
+    setStep("courses");
   }
 
   async function connect() {
     if (!canvasUrl.trim() || !token.trim()) return;
     setStep("connecting");
     try {
-      const result = await connectCanvas(apiUrl, canvasUrl.trim(), token.trim());
+      const result = await connectCanvas(canvasUrl.trim(), token.trim());
+      setToken("");
       setCanvasUrl(result.canvas_url);
       setDisplayName(result.display_name);
-      setCourses(result.courses);
-      setSelectedCourses(new Set(result.courses.map((course) => course.id)));
-      setStep("courses");
+      onConnected({ displayName: result.display_name, canvasUrl: result.canvas_url, lastSynced: connection?.lastSynced ?? null });
+      showCourses(result.courses);
     } catch (err) {
-      fail(err instanceof Error ? err.message : "Could not connect to Canvas.", "token");
+      fail(err, "Could not connect to Canvas.", "token");
+    }
+  }
+
+  /** Re-sync with the saved connection: no token needed. */
+  async function resync() {
+    setStep("loading");
+    try {
+      showCourses((await listCanvasCourses()).courses);
+    } catch (err) {
+      fail(err, "Could not load your Canvas courses.", "done");
     }
   }
 
@@ -133,13 +160,22 @@ export function CanvasModal({ apiUrl, now, connection, existingTasks, completedI
     setStep("syncing");
     try {
       const ids = [...selectedCourses];
-      const result = await syncCanvas(apiUrl, canvasUrl, token.trim(), ids.length < courses.length ? ids : undefined);
+      const result = await syncCanvas(ids.length < courses.length ? ids : undefined);
       setItems(toReviewItems(result.assignments, courses, existingTasks, new Set(completedIds), new Date()));
-      onConnected({ displayName, canvasUrl, courseCount: ids.length, lastSynced: new Date() });
-      setToken("");
+      onConnected({ displayName, canvasUrl, lastSynced: new Date() });
       setStep("assignments");
     } catch (err) {
-      fail(err instanceof Error ? err.message : "Could not sync Canvas assignments.", "courses");
+      fail(err, "Could not sync Canvas assignments.", "courses");
+    }
+  }
+
+  async function disconnect() {
+    try {
+      await disconnectCanvas();
+      onDisconnected();
+      onClose();
+    } catch (err) {
+      fail(err, "Could not disconnect Canvas.", "done");
     }
   }
 
@@ -155,7 +191,7 @@ export function CanvasModal({ apiUrl, now, connection, existingTasks, completedI
   }
 
   const backTarget: Partial<Record<Step, Step>> = { token: "url", courses: "token" };
-  const busy = step === "connecting" || step === "syncing";
+  const busy = step === "connecting" || step === "loading" || step === "syncing";
 
   return (
     <div className="canvas-overlay" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
@@ -169,7 +205,7 @@ export function CanvasModal({ apiUrl, now, connection, existingTasks, completedI
 
         <ol className="canvas-progress" aria-label="Progress">
           {["Connect", "Courses", "Review"].map((label, index) => {
-            const position = { url: 0, token: 0, connecting: 0, courses: 1, syncing: 1, assignments: 2, done: 3, error: -1 }[step];
+            const position = { url: 0, token: 0, connecting: 0, loading: 1, courses: 1, syncing: 1, assignments: 2, done: 3, error: -1 }[step];
             return <li key={label} className={position > index ? "complete" : position === index ? "current" : ""}>{label}</li>;
           })}
         </ol>
@@ -201,7 +237,7 @@ export function CanvasModal({ apiUrl, now, connection, existingTasks, completedI
             </label>
             <div className="canvas-token-notice">
               <Icon name="check" />
-              <span>Read-only. Sent to StudyFlow’s backend only for this sync — never stored, logged, or saved in your browser.</span>
+              <span>Encrypted and kept on StudyFlow’s server so you can re-sync with one click. Never logged, never sent back to your browser, and deleted when you disconnect.</span>
             </div>
             <div className="canvas-modal-actions">
               <button className="glow-button" disabled={!token.trim()} onClick={() => void connect()}>Connect Canvas <Icon name="arrow" /></button>
@@ -213,7 +249,13 @@ export function CanvasModal({ apiUrl, now, connection, existingTasks, completedI
           <div className="canvas-step canvas-loading" role="status">
             <div className="canvas-spinner" />
             <h2 id="canvas-modal-title" className="sr-only">Working</h2>
-            <p>{step === "connecting" ? "Verifying your token and finding courses…" : `Reading assignments from ${plural(selectedCourses.size, "course")}…`}</p>
+            <p>
+              {step === "connecting"
+                ? "Verifying your token and finding courses…"
+                : step === "loading"
+                  ? "Loading your courses…"
+                  : `Reading assignments from ${plural(selectedCourses.size, "course")}…`}
+            </p>
           </div>
         )}
 
@@ -262,16 +304,28 @@ export function CanvasModal({ apiUrl, now, connection, existingTasks, completedI
         {step === "done" && (
           <div className="canvas-step canvas-success-step">
             <div className="canvas-success-icon"><Icon name="check" /></div>
-            <h2 id="canvas-modal-title">Canvas synced</h2>
+            <h2 id="canvas-modal-title">{summary ? "Canvas synced" : "Canvas connected"}</h2>
             <p suppressHydrationWarning>
               {summary ||
                 (connection
-                  ? `Connected as ${connection.displayName} · last synced ${relativeTime(connection.lastSynced, now)}. ${plural(existingTasks.length, "Canvas assignment")} in your plan.`
+                  ? `Signed in as ${connection.displayName}${connection.lastSynced ? ` · last synced ${relativeTime(connection.lastSynced, now)}` : ""}. ${plural(existingTasks.length, "Canvas assignment")} in your plan.`
                   : "")}
             </p>
             <div className="canvas-modal-actions">
-              <button className="glow-button" onClick={onClose}>Done</button>
-              <button className="quiet-action" onClick={() => { setToken(""); setStep("token"); }}><Icon name="refresh" />Sync again</button>
+              {summary ? (
+                <button className="glow-button" onClick={onClose}>Done</button>
+              ) : (
+                <button className="glow-button" onClick={() => void resync()}><Icon name="refresh" />Sync now</button>
+              )}
+              {confirmDisconnect ? (
+                <div className="confirm-row" role="group" aria-label="Confirm disconnect">
+                  <span>Delete the saved token? Imported assignments stay in your plan.</span>
+                  <button className="danger-button" onClick={() => void disconnect()}>Disconnect</button>
+                  <button className="quiet-action" onClick={() => setConfirmDisconnect(false)}>Keep</button>
+                </div>
+              ) : (
+                <button className="quiet-action" onClick={() => setConfirmDisconnect(true)}>Disconnect Canvas</button>
+              )}
             </div>
           </div>
         )}
