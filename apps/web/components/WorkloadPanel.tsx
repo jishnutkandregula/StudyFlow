@@ -147,6 +147,7 @@ export function WorkloadPanel({ now, tasks, courseColor, showCapture, onToggleCa
                   <small suppressHydrationWarning>
                     {task.course} · <span className={urgent ? "due-soon" : undefined}>due {formatDue(task.due_date, task.due_time, now)}</span>
                     {task.source === "canvas" && <span className="source-badge">Canvas</span>}
+                    {task.source === "sample" && <span className="source-badge sample">Sample</span>}
                   </small>
                 </div>
                 <EstimateEditor key={task.estimated_minutes} task={task} onChange={(minutes) => onEstimateChange(task.id, minutes)} />

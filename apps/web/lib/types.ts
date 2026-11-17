@@ -1,7 +1,7 @@
 // Shared frontend domain types. Planner request/response shapes mirror
 // apps/api/app/planner.py; keep the two in sync.
 
-export type TaskSource = "manual" | "canvas";
+export type TaskSource = "manual" | "canvas" | "sample";
 
 export type Task = {
   id: string;

@@ -48,6 +48,10 @@ export function Sidebar({ studentName, saveStatus, now }: Props) {
           </small>
         </div>
       </div>
+      <div className="rail-links">
+        <a href="/privacy">Privacy</a>
+        <a href="https://github.com/jishnutkandregula/StudyFlow" target="_blank" rel="noopener noreferrer">Source</a>
+      </div>
     </aside>
   );
 }

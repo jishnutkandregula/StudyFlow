@@ -233,3 +233,33 @@ button.task-time:hover{border-color:rgba(255,255,255,.18);color:#fff}
 .confirm-row .quiet-action{margin:0}
 .canvas-modal-actions .confirm-row{background:rgba(214,91,91,.07);border:1px solid rgba(255,140,140,.2);border-radius:10px;padding:10px 12px;text-align:left}
 .canvas-modal-actions .glow-button svg{height:15px;width:15px}
+/* ── D1: sample workspace ──────────────────────────────────────── */
+.text-button{align-items:center;background:transparent;border:0;color:#bcaaff;display:inline-flex;font-size:12px;font-weight:600;gap:6px;padding:8px 4px}
+.text-button:hover{color:#ddd5ff;text-decoration:underline}
+.text-button svg{height:13px;width:13px}
+.sample-banner{align-items:center;animation:reveal .3s both;background:linear-gradient(100deg,rgba(255,193,120,.1),rgba(153,122,255,.08));border:1px dashed rgba(255,193,120,.35);border-radius:12px;color:#ffe2c2;display:flex;flex-wrap:wrap;font-size:12px;gap:12px;margin-top:20px;padding:11px 14px}
+.sample-banner>svg{color:#ffc98f;flex:0 0 auto;height:16px;width:16px}
+.sample-banner span{flex:1 1 300px;line-height:1.45}
+.sample-banner strong{color:#fff}
+.sample-banner .ghost-button{font-size:12px;padding:7px 11px}
+.source-badge.sample{background:rgba(255,193,120,.16);color:#ffc98f}
+/* ── Privacy page ──────────────────────────────────────────────── */
+.doc-shell{background:#0a0b13;min-height:100vh;overflow:hidden;padding:56px 16px 80px;position:relative}
+.doc{margin:0 auto;max-width:720px;position:relative;z-index:1}
+.doc-back{color:#bcaaff;font-size:13px;text-decoration:none}
+.doc-back:hover{text-decoration:underline}
+.doc .kicker{margin:36px 0 10px}
+.doc h1{font-size:clamp(34px,5vw,48px);letter-spacing:-.05em;line-height:1.02;margin:0}
+.doc-lede{color:#b8b3cb;font-size:15px;line-height:1.6;margin:16px 0 8px}
+.doc section{border-top:1px solid rgba(255,255,255,.09);margin-top:28px;padding-top:22px}
+.doc h2{font-size:16px;letter-spacing:-.02em;margin:0 0 12px}
+.doc ul{display:grid;gap:10px;margin:0;padding-left:18px}
+.doc li{color:#c9c5d8;font-size:14px;line-height:1.6}
+.doc li::marker{color:#9d85f7}
+.doc-footnote{color:#8b8898;font-size:12px;line-height:1.6;margin-top:40px}
+.doc-footnote a{color:#bcaaff}
+.rail-links{display:flex;gap:10px;margin-top:10px;padding:0 7px}
+.rail-links a{color:#77748a;font-size:10px;text-decoration:none}
+.rail-links a:hover{color:#cfc9e3;text-decoration:underline}
+.data-controls p a{color:#bcaaff}
+@media(max-width:1080px){.rail-links{display:none}}

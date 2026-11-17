@@ -12,10 +12,11 @@ type Props = {
   onGenerate: () => void;
   onOpenCanvas: () => void;
   onAddManual: () => void;
+  onLoadSample: () => void;
   onDone: (session: Session) => void;
 };
 
-export function TodayOverview({ now, tasks, plan, loading, courseColor, onGenerate, onOpenCanvas, onAddManual, onDone }: Props) {
+export function TodayOverview({ now, tasks, plan, loading, courseColor, onGenerate, onOpenCanvas, onAddManual, onLoadSample, onDone }: Props) {
   const nextSession = plan?.sessions.find((session) => !now || new Date(session.ends_at) > now);
   const nextTask = nextSession && tasks.find((task) => task.id === nextSession.task_id);
   const requested = tasks.reduce((total, task) => total + task.estimated_minutes, 0);
@@ -36,6 +37,7 @@ export function TodayOverview({ now, tasks, plan, loading, courseColor, onGenera
             <div className="now-actions">
               <button className="glow-button" onClick={onOpenCanvas}><Icon name="canvas" />Import from Canvas</button>
               <button className="ghost-button" onClick={onAddManual}><Icon name="plus" />Add manually</button>
+              <button className="text-button" onClick={onLoadSample}>or explore with sample data <Icon name="arrow" /></button>
             </div>
           </>
         ) : !plan ? (

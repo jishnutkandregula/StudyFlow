@@ -110,7 +110,7 @@ export function PreferencesPanel(props: Props) {
             <p>
               StudyFlow saves your coursework, settings, and plan for this browser so they survive a reload. Calendar
               event titles are never saved, only when you’re busy. A connected Canvas token is stored encrypted and is
-              never sent back to your browser.
+              never sent back to your browser. <a href="/privacy">Read the privacy details</a>.
             </p>
             {confirmDelete ? (
               <div className="confirm-row" role="group" aria-label="Confirm delete">

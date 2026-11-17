@@ -32,6 +32,7 @@ import type {
   Task,
   Toast,
 } from "../lib/types";
+import { buildSampleTasks, isSample } from "../lib/sampleData";
 import { useNow } from "../lib/useNow";
 
 const SAVE_DEBOUNCE_MS = 700;
@@ -343,9 +344,43 @@ export default function Home() {
     }
   }
 
+  const hasSample = tasks.some(isSample);
+
+  /** Load the labelled demo week and plan it immediately, so the whole flow is visible at once. */
+  function handleLoadSample() {
+    const sample = buildSampleTasks(new Date());
+    const next = { ...inputs, tasks: sample, lockedSessions: [], blockedDates: [] };
+    setTasks(sample);
+    setLockedSessions([]);
+    setBlockedDates([]);
+    setCompleted([]);
+    void runPlan(next, null);
+  }
+
+  /** Remove sample data (and anything attached to it) so it never mixes with real coursework. */
+  function withoutSample(current: Task[]): Task[] {
+    if (!current.some(isSample)) return current;
+    const sampleIds = new Set(current.filter(isSample).map((task) => task.id));
+    setLockedSessions((locks) => locks.filter((lock) => !sampleIds.has(lock.task_id)));
+    setCompleted((done) => done.filter((item) => !sampleIds.has(item.id)));
+    return current.filter((task) => !isSample(task));
+  }
+
+  function handleClearSample() {
+    const remaining = withoutSample(tasks);
+    setTasks(remaining);
+    if (!remaining.length) {
+      setPlan(null);
+      setPlanKey("");
+      setChange(null);
+    }
+    setToast({ text: "Sample data cleared.", tone: "info" });
+  }
+
   function handleCanvasImport({ tasks: imported, reviewedIds }: CanvasImport) {
     const reviewed = new Set(reviewedIds);
-    setTasks((current) => [...current.filter((task) => !reviewed.has(task.id)), ...imported]);
+    if (hasSample) setToast({ text: "Sample data cleared so it doesn’t mix with your real coursework.", tone: "info" });
+    setTasks([...withoutSample(tasks).filter((task) => !reviewed.has(task.id)), ...imported]);
   }
 
   const closeCanvas = useCallback(() => setCanvasOpen(false), []);
@@ -375,6 +410,18 @@ export default function Home() {
           )}
         </div>
 
+        {hasSample && (
+          <div className="sample-banner" role="note">
+            <Icon name="spark" />
+            <span>
+              <strong>You’re exploring sample data.</strong> A made-up week for a CS student, so you can try planning,
+              health, and replanning. Nothing here is real.
+            </span>
+            <button className="ghost-button" onClick={() => setCanvasOpen(true)}>Use my Canvas</button>
+            <button className="text-button" onClick={handleClearSample}>Clear sample</button>
+          </div>
+        )}
+
         <ConnectionRibbon
           now={now}
           calendar={calendar}
@@ -397,6 +444,7 @@ export default function Home() {
             setShowCapture(true);
             document.getElementById("work")?.scrollIntoView({ behavior: "smooth", block: "start" });
           }}
+          onLoadSample={handleLoadSample}
           onDone={handleSessionDone}
         />
 
@@ -430,9 +478,12 @@ export default function Home() {
             showCapture={showCapture}
             onToggleCapture={() => setShowCapture((current) => !current)}
             onAdd={(task) => {
-              setTasks((current) => [...current, task]);
+              setTasks([...withoutSample(tasks), task]);
               setShowCapture(false);
-              setToast({ text: `${task.title} added. Replan when you’re ready.`, tone: "info" });
+              setToast({
+                text: hasSample ? `${task.title} added. Sample data was cleared.` : `${task.title} added. Replan when you’re ready.`,
+                tone: "info",
+              });
             }}
             onRemove={(id) => {
               setTasks((current) => current.filter((task) => task.id !== id));
