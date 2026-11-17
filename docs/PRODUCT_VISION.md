@@ -125,9 +125,9 @@ Honest gap analysis against the vision. ✅ done · 🟡 partial · ⬜ not star
 | Session chunking (focus length + breaks) | ✅ | |
 | Per-session explanations | ✅ | "Why?" on every session, using readable deadlines |
 | Overall risk + unscheduled work warnings | ✅ | low / medium / high |
-| Four-level schedule health (on track → not recoverable) | 🟡 | Three levels (On track / Tight / At risk), plus a "Didn't fit" list with what to change |
-| Complete / longer / can't today / lock / move | ⬜ | |
-| Replanning with a "what changed" diff | 🟡 | The app flags a plan as out of date when inputs change; no diff yet |
+| Four-level schedule health (on track → not recoverable) | ✅ | Computed by the planner, with a reason. "Not recoverable" means the task can't fit before its deadline even with nothing else planned |
+| Complete / longer / can't today / lock / move | 🟡 | Done, +30 min, lock/unlock, "Can't study today", inline estimate edits, one-click undo. Dragging a session to a new time isn't built yet |
+| Replanning with a "what changed" diff | ✅ | Every action replans automatically and shows what now fits, what no longer fits, sessions moved, and any health change |
 
 ### Product and UX
 
@@ -174,7 +174,11 @@ Honest gap analysis against the vision. ✅ done · 🟡 partial · ⬜ not star
   and edit its estimate, sees undated items flagged, and the generated plan respects due *times*.
   Typecheck, build, and API tests pass.
 
-### B. Replanning controls
+### B. Replanning controls — ✅ shipped 2026-11-16
+
+Shipped: session Done / +30 / Lock, "Can't study today", inline estimates, undo, automatic
+replanning with a change summary, four-level health, and using gaps of 25+ minutes instead of
+wasting them. Deferred: dragging sessions to a new time.
 
 Mark complete / "will take longer" / "can't today" / lock a session, then replan with a visible
 "what changed" summary and a four-level schedule health view. This delivers the product's main
@@ -188,7 +192,7 @@ token moves server-side and tasks, preferences, and sync history survive reloads
 before a public deployment, but it is the largest phase and does little for the core loop until A
 and B exist.
 
-**Recommendation: B next, then C**, each with its own approval, focused commits, and
+**Recommendation: C next** (saved data and a server-side Canvas session), then deployment, each with its own approval, focused commits, and
 verification.
 
 ## Phase checklist
@@ -206,7 +210,7 @@ Claim only what has been built and verified.
 | Full-stack Next.js + Python platform syncing Canvas coursework and Google Calendar availability into constraint-aware plans | 🟡 Both syncs work and feed the planner, but there is no persistence or assignment review yet |
 | Secure third-party integrations: OAuth, Canvas API, token handling, validation, pagination, error recovery, least privilege | 🟡 All true except server-side token custody (phase C) |
 | Scheduling engine honoring deadlines, recurring availability, calendar events, sleep, meals, protected time, daily caps | ✅ Earned |
-| Polished responsive UX with assignment review, sync status, explanations, re-planning controls | 🟡 Review, sync status, and explanations are done; replanning controls need phase B |
+| Polished responsive UX with assignment review, sync status, explanations, re-planning controls | ✅ Earned. Strongest once it's deployed with real users |
 | Automated tests, type checking, linting, CI, docs, reproducible setup | ✅ Earned (backend tests + CI); frontend tests would strengthen it |
 
 ## Portfolio checklist (eventually)
