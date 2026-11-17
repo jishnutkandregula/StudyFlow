@@ -13,6 +13,19 @@ class RiskLevel(str, Enum):
     HIGH = "high"
 
 
+class PlanHealth(str, Enum):
+    """How realistic the plan is, from the student's point of view."""
+
+    ON_TRACK = "on_track"
+    TIGHT = "tight"
+    AT_RISK = "at_risk"
+    NOT_RECOVERABLE = "not_recoverable"
+
+
+# Shortest session worth suggesting when a gap is smaller than the preferred focus block.
+MIN_FLEX_SESSION_MINUTES = 25
+
+
 class Task(BaseModel):
     id: str
     title: str = Field(min_length=1, max_length=160)
@@ -86,6 +99,20 @@ class BusyTimeBlock(BaseModel):
         return self
 
 
+class LockedSession(BaseModel):
+    """A session the student pinned; it stays put and everything else plans around it."""
+
+    task_id: str
+    starts_at: datetime
+    ends_at: datetime
+
+    @model_validator(mode="after")
+    def ends_after_start(self) -> LockedSession:
+        if self.ends_at <= self.starts_at:
+            raise ValueError("ends_at must be later than starts_at")
+        return self
+
+
 class MealWindow(BaseModel):
     start_time: time
     end_time: time
@@ -117,6 +144,9 @@ class PlanningRequest(BaseModel):
     # The student's current local time. Nothing is scheduled before it, so a plan generated
     # at 7 PM never suggests a session that already started at 9 AM.
     planning_start: Optional[datetime] = None  # noqa: UP045 -- Python 3.9 runtime
+    locked_sessions: list[LockedSession] = Field(default_factory=list, max_length=200)
+    # One-off days with no studying at all, e.g. "I can't do anything today".
+    blocked_dates: list[date] = Field(default_factory=list, max_length=60)
     max_session_minutes: int = Field(default=90, ge=15, le=180)
     minimum_break_minutes: int = Field(default=10, ge=0, le=60)
 
@@ -135,6 +165,7 @@ class PlannedSession(BaseModel):
     ends_at: datetime
     minutes: int
     explanation: str
+    locked: bool = False
 
 
 class UnscheduledTask(BaseModel):
@@ -144,6 +175,8 @@ class UnscheduledTask(BaseModel):
     remaining_minutes: int
     risk: RiskLevel
     reason: str
+    # False when the task cannot fit before its deadline even if nothing else were planned.
+    recoverable: bool = True
 
 
 class PlanningResponse(BaseModel):
@@ -153,6 +186,8 @@ class PlanningResponse(BaseModel):
     requested_minutes: int
     available_minutes: int
     risk: RiskLevel
+    health: PlanHealth = PlanHealth.ON_TRACK
+    health_reason: str = ""
     explanation: str
     warnings: list[str] = Field(default_factory=list)
 
@@ -180,6 +215,44 @@ def _risk(remaining_minutes: int, due_date: date, today: date) -> RiskLevel:
     if due_date <= today + timedelta(days=1):
         return RiskLevel.HIGH
     return RiskLevel.MEDIUM
+
+
+def _format_minutes(minutes: int) -> str:
+    hours, rest = divmod(minutes, 60)
+    if not hours:
+        return f"{rest}m"
+    return f"{hours}h {rest}m" if rest else f"{hours}h"
+
+
+def _health(
+    unscheduled: list[UnscheduledTask], scheduled_minutes: int, available_minutes: int
+) -> tuple[PlanHealth, str]:
+    blocked = [item for item in unscheduled if not item.recoverable]
+    if blocked:
+        names = ", ".join(item.task_title for item in blocked[:2])
+        return (
+            PlanHealth.NOT_RECOVERABLE,
+            f"{names} can't fit before {'its' if len(blocked) == 1 else 'their'} deadline even "
+            "with nothing else planned. Something has to change: more time, a smaller "
+            "estimate, or an extension.",
+        )
+    if unscheduled:
+        count = len(unscheduled)
+        return (
+            PlanHealth.AT_RISK,
+            f"{count} {'item doesn’t' if count == 1 else 'items don’t'} fit as planned, but "
+            f"{'it' if count == 1 else 'each'} could fit on its own. Reprioritize, trim an "
+            "estimate, or add study time.",
+        )
+    utilization = scheduled_minutes / available_minutes if available_minutes else 1.0
+    if utilization >= 0.8:
+        return (
+            PlanHealth.TIGHT,
+            f"Everything fits, but it uses {round(utilization * 100)}% of your free study time, "
+            "so there’s little room for surprises.",
+        )
+    spare = _format_minutes(max(0, available_minutes - scheduled_minutes))
+    return PlanHealth.ON_TRACK, f"Everything fits with {spare} of free study time to spare."
 
 
 def _interval_minutes(start: datetime, end: datetime) -> int:
@@ -212,6 +285,13 @@ def _blocked_intervals(day: date, request: PlanningRequest) -> list[tuple[dateti
     """Build same-day intervals that must be subtracted from availability."""
 
     blocked: list[tuple[datetime, datetime]] = []
+    day_start = datetime.combine(day, time.min)
+    day_end = day_start + timedelta(days=1)
+    if day in request.blocked_dates:
+        return [(day_start, day_end)]
+    for locked in request.locked_sessions:
+        if locked.starts_at < day_end and locked.ends_at > day_start:
+            blocked.append((locked.starts_at, locked.ends_at))
     if request.planning_start is not None and request.planning_start.date() == day:
         blocked.append((datetime.combine(day, time.min), request.planning_start))
     for item in request.busy_time:
@@ -224,8 +304,6 @@ def _blocked_intervals(day: date, request: PlanningRequest) -> list[tuple[dateti
     if preferences is None:
         return blocked
 
-    day_start = datetime.combine(day, time.min)
-    day_end = day_start + timedelta(days=1)
     sleep_start = datetime.combine(day, preferences.sleep_start)
     wake_time = datetime.combine(day, preferences.wake_time)
 
@@ -286,7 +364,6 @@ def generate_plan(request: PlanningRequest, today: date | None = None) -> Planni
     )
     remaining = {task.id: task.estimated_minutes for task in request.tasks}
     sessions: list[PlannedSession] = []
-    available_minutes = 0
     blocks = sorted(
         _base_availability(request, reference_date),
         key=lambda block: (block.date, block.start_time),
@@ -300,6 +377,32 @@ def generate_plan(request: PlanningRequest, today: date | None = None) -> Planni
     )
     daily_cap = preferences.max_study_minutes_per_day if preferences else 24 * 60
     daily_scheduled: dict[date, int] = {}
+    tasks_by_id = {task.id: task for task in request.tasks}
+
+    # Locked sessions are fixed commitments: count their work first, then plan around them.
+    locked_minutes = 0
+    for locked in request.locked_sessions:
+        task = tasks_by_id.get(locked.task_id)
+        if task is None:
+            continue
+        minutes = _interval_minutes(locked.starts_at, locked.ends_at)
+        remaining[task.id] = max(0, remaining[task.id] - minutes)
+        day = locked.starts_at.date()
+        daily_scheduled[day] = daily_scheduled.get(day, 0) + minutes
+        locked_minutes += minutes
+        sessions.append(
+            PlannedSession(
+                task_id=task.id,
+                task_title=task.title,
+                course=task.course,
+                starts_at=locked.starts_at,
+                ends_at=locked.ends_at,
+                minutes=minutes,
+                explanation="Locked by you. StudyFlow keeps it in place and plans everything else "
+                "around it.",
+                locked=True,
+            )
+        )
 
     for block in blocks:
         block_start = datetime.combine(block.date, block.start_time)
@@ -332,6 +435,9 @@ def generate_plan(request: PlanningRequest, today: date | None = None) -> Planni
                 # is allowed only when it genuinely fits inside the remaining interval.
                 if preferences is None:
                     target_minutes = min(target_minutes, minutes_left)
+                elif target_minutes > minutes_left >= MIN_FLEX_SESSION_MINUTES:
+                    # Use a shorter session rather than wasting a usable gap.
+                    target_minutes = minutes_left
                 if target_minutes > minutes_left or target_minutes < 15:
                     break
 
@@ -356,36 +462,65 @@ def generate_plan(request: PlanningRequest, today: date | None = None) -> Planni
                 daily_scheduled[block.date] = daily_scheduled.get(block.date, 0) + target_minutes
                 cursor = end + timedelta(minutes=break_minutes)
 
-    # Capacity represents time usable by the planner, not simply raw calendar windows.
-    for day in sorted({block.date for block in blocks}):
-        day_fragments: list[tuple[datetime, datetime]] = []
-        for block in (item for item in blocks if item.date == day):
-            day_fragments.extend(
-                _subtract_intervals(
-                    datetime.combine(block.date, block.start_time),
-                    datetime.combine(block.date, block.end_time),
-                    _blocked_intervals(day, request),
-                )
-            )
-        available_minutes += min(
-            daily_cap, sum(_interval_minutes(start, end) for start, end in day_fragments)
-        )
+    locked_by_day: dict[date, int] = {}
+    for session in sessions:
+        if session.locked:
+            day = session.starts_at.date()
+            locked_by_day[day] = locked_by_day.get(day, 0) + session.minutes
 
-    unscheduled = [
-        UnscheduledTask(
-            task_id=task.id,
-            task_title=task.title,
-            course=task.course,
-            remaining_minutes=remaining[task.id],
-            risk=_risk(remaining[task.id], task.due_date, reference_date),
-            reason=(
-                "There is not enough available study time before this deadline. "
-                "Add availability, reduce the estimate, or renegotiate the deadline."
-            ),
+    def capacity_until(deadline: datetime) -> int:
+        """Free study minutes before `deadline`, honoring every constraint and the daily cap."""
+
+        total = 0
+        for day in sorted({block.date for block in blocks}):
+            fragments: list[tuple[datetime, datetime]] = []
+            for block in (item for item in blocks if item.date == day):
+                fragments.extend(
+                    _subtract_intervals(
+                        datetime.combine(block.date, block.start_time),
+                        min(datetime.combine(block.date, block.end_time), deadline),
+                        _blocked_intervals(day, request),
+                    )
+                )
+            free = sum(_interval_minutes(start, end) for start, end in fragments)
+            total += max(0, min(daily_cap - locked_by_day.get(day, 0), free))
+        return total
+
+    # Capacity represents time usable by the planner, not simply raw calendar windows.
+    available_minutes = capacity_until(datetime.max) + locked_minutes
+
+    locked_by_task: dict[str, int] = {}
+    for session in sessions:
+        if session.locked:
+            locked_by_task[session.task_id] = (
+                locked_by_task.get(session.task_id, 0) + session.minutes
+            )
+
+    unscheduled: list[UnscheduledTask] = []
+    for task in sorted(request.tasks, key=_task_sort_key):
+        if remaining[task.id] <= 0:
+            continue
+        need = task.estimated_minutes - locked_by_task.get(task.id, 0)
+        capacity = capacity_until(_deadline(task))
+        recoverable = need <= capacity
+        unscheduled.append(
+            UnscheduledTask(
+                task_id=task.id,
+                task_title=task.title,
+                course=task.course,
+                remaining_minutes=remaining[task.id],
+                risk=_risk(remaining[task.id], task.due_date, reference_date),
+                recoverable=recoverable,
+                reason=(
+                    "Other deadlines are using the time before this one. It would fit on its "
+                    "own, so reprioritize, trim an estimate, or add availability."
+                    if recoverable
+                    else f"Needs {need} more minutes but only {capacity} free minutes remain "
+                    "before it is due. Change a constraint: add availability, lower the "
+                    "estimate, or ask for an extension."
+                ),
+            )
         )
-        for task in sorted(request.tasks, key=_task_sort_key)
-        if remaining[task.id] > 0
-    ]
     overall_risk = (
         RiskLevel.HIGH
         if any(item.risk == RiskLevel.HIGH for item in unscheduled)
@@ -393,8 +528,10 @@ def generate_plan(request: PlanningRequest, today: date | None = None) -> Planni
         if unscheduled
         else RiskLevel.LOW
     )
+    sessions.sort(key=lambda session: session.starts_at)
     scheduled_minutes = sum(session.minutes for session in sessions)
     requested_minutes = sum(task.estimated_minutes for task in request.tasks)
+    health, health_reason = _health(unscheduled, scheduled_minutes, available_minutes)
 
     warnings: list[str] = []
     if not blocks:
@@ -413,6 +550,8 @@ def generate_plan(request: PlanningRequest, today: date | None = None) -> Planni
         requested_minutes=requested_minutes,
         available_minutes=available_minutes,
         risk=overall_risk,
+        health=health,
+        health_reason=health_reason,
         explanation=(
             "StudyFlow schedules nearest deadlines first, then uses course weight and priority "
             "to break ties. It respects your availability, protected time, meals, sleep, "
