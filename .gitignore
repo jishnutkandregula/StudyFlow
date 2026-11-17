@@ -11,3 +11,6 @@ __pycache__/
 .env
 .env.local
 *.egg-info/
+# Local API data (development database and generated encryption key)
+apps/api/studyflow.db
+apps/api/.studyflow-dev-key

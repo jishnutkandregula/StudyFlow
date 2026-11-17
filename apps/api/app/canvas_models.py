@@ -28,6 +28,7 @@ class CanvasErrorCode(str, Enum):
     UNREACHABLE = "unreachable"
     CANVAS_ERROR = "canvas_error"
     INVALID_REQUEST = "invalid_request"
+    NOT_CONNECTED = "not_connected"
 
 
 class CanvasError(Exception):
@@ -70,13 +71,12 @@ class CanvasConnectRequest(BaseModel):
     )
 
 
-class CanvasAssignmentsRequest(BaseModel):
-    """Payload to fetch assignments given a live session credential."""
+class CanvasSyncRequest(BaseModel):
+    """Fetch assignments using the Canvas connection stored for this session."""
 
-    canvas_url: str = Field(min_length=10, max_length=512)
-    access_token: str = Field(min_length=1, max_length=512)
     course_ids: Optional[list[str]] = Field(  # noqa: UP045 -- keep Optional for 3.9 compat
         default=None,
+        max_length=100,
         description="Restrict to these course IDs. Omit to fetch all active courses.",
     )
 

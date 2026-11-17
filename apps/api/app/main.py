@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.canvas_routes import router as canvas_router
 from app.planner import PlanningRequest, PlanningResponse, generate_plan
+from app.settings import get_settings
+from app.workspace import router as workspace_router
 
 app = FastAPI(
     title="StudyFlow API",
@@ -12,13 +14,14 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=get_settings().allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "X-StudyFlow-Request"],
 )
 
 app.include_router(canvas_router)
+app.include_router(workspace_router)
 
 
 @app.get("/health", tags=["system"])

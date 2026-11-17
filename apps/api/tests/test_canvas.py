@@ -137,60 +137,86 @@ def _connect_payload(url: str = "https://canvas.example.edu", token: str = "tok"
     return {"canvas_url": url, "access_token": token}
 
 
-def test_connect_invalid_url_returns_422() -> None:
-    client = TestClient(app)
-    response = client.post("/api/v1/canvas/connect", json=_connect_payload("https://localhost"))
-    assert response.status_code == 422
-    assert response.json()["code"] == CanvasErrorCode.INVALID_URL.value
+def _connect(client, token: str = "valid-token"):
+    from app.canvas_models import CanvasCourse
 
-
-def test_connect_success_returns_display_name_and_courses() -> None:
     with (
         patch("app.canvas_routes.validate_connection", new_callable=AsyncMock) as mock_validate,
         patch("app.canvas_routes.fetch_courses", new_callable=AsyncMock) as mock_courses,
     ):
-        from app.canvas_models import CanvasCourse
-
         mock_validate.return_value = "Test Student"
         mock_courses.return_value = [
             CanvasCourse(id="1", name="CSE 101", course_code="CSE101"),
             CanvasCourse(id="2", name="STAT 131", course_code="STAT131"),
         ]
-        client = TestClient(app)
-        response = client.post(
-            "/api/v1/canvas/connect",
-            json=_connect_payload("https://canvas.example.edu", "valid-token"),
-        )
+        return client.post("/api/v1/canvas/connect", json=_connect_payload(token=token))
+
+
+def test_connect_requires_session_and_header() -> None:
+    no_session = TestClient(app, headers={"X-StudyFlow-Request": "1"})
+    assert no_session.post("/api/v1/canvas/connect", json=_connect_payload()).status_code == 401
+
+    no_header = TestClient(app)
+    no_header.get("/api/v1/workspace")
+    assert no_header.post("/api/v1/canvas/connect", json=_connect_payload()).status_code == 403
+
+
+def test_connect_invalid_url_returns_422(session_client) -> None:
+    response = session_client.post(
+        "/api/v1/canvas/connect", json=_connect_payload("https://localhost")
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == CanvasErrorCode.INVALID_URL.value
+
+
+def test_connect_success_stores_token_encrypted_and_never_returns_it(session_client) -> None:
+    from app import storage
+    from app.session import COOKIE_NAME
+
+    response = _connect(session_client)
     assert response.status_code == 200
     body = response.json()
     assert body["display_name"] == "Test Student"
+    assert body["canvas_url"] == "https://canvas.example.edu"
     assert len(body["courses"]) == 2
-    # Token must never appear in the response.
-    assert "token" not in json.dumps(body)
     assert "valid-token" not in json.dumps(body)
 
+    record = storage.get_session(
+        storage.hash_session_id(session_client.cookies.get(COOKIE_NAME))
+    )
+    assert record.canvas_connected
+    assert "valid-token" not in record.canvas_token_enc  # encrypted at rest
 
-def test_connect_unauthorized_returns_401() -> None:
+    workspace = session_client.get("/api/v1/workspace").json()
+    assert workspace["canvas"]["display_name"] == "Test Student"
+    assert "valid-token" not in json.dumps(workspace)
+
+
+def test_connect_unauthorized_returns_401_and_stores_nothing(session_client) -> None:
     with patch("app.canvas_routes.validate_connection", new_callable=AsyncMock) as mock_validate:
         mock_validate.side_effect = CanvasError(
             code=CanvasErrorCode.UNAUTHORIZED, message="Bad token."
         )
-        client = TestClient(app)
-        response = client.post(
-            "/api/v1/canvas/connect",
-            json=_connect_payload("https://canvas.example.edu", "bad"),
-        )
+        response = session_client.post("/api/v1/canvas/connect", json=_connect_payload())
     assert response.status_code == 401
     assert response.json()["code"] == "unauthorized"
+    assert session_client.get("/api/v1/workspace").json()["canvas"] is None
 
 
-def test_sync_returns_assignments() -> None:
+def test_sync_without_connection_returns_409(session_client) -> None:
+    response = session_client.post("/api/v1/canvas/sync", json={})
+    assert response.status_code == 409
+    assert response.json()["code"] == "not_connected"
+
+
+def test_sync_uses_stored_token_and_records_last_sync(session_client) -> None:
+    from app.canvas_models import CanvasAssignment, CanvasCourse
+
+    _connect(session_client, token="stored-token")
     with (
         patch("app.canvas_routes.fetch_assignments", new_callable=AsyncMock) as mock_assignments,
         patch("app.canvas_routes.fetch_courses", new_callable=AsyncMock) as mock_courses,
     ):
-        from app.canvas_models import CanvasAssignment, CanvasCourse
-
         mock_assignments.return_value = [
             CanvasAssignment(
                 id="99",
@@ -201,52 +227,46 @@ def test_sync_returns_assignments() -> None:
             )
         ]
         mock_courses.return_value = [CanvasCourse(id="1", name="CSE 101", course_code="CSE101")]
-        client = TestClient(app)
-        response = client.post(
-            "/api/v1/canvas/sync",
-            json={
-                "canvas_url": "https://canvas.example.edu",
-                "access_token": "tok",
-            },
-        )
+        response = session_client.post("/api/v1/canvas/sync", json={})
     assert response.status_code == 200
     body = response.json()
     assert body["assignments_found"] == 1
     assert body["assignments"][0]["title"] == "Lab 4"
-    # Token must never appear in the response.
-    assert "tok" not in json.dumps(body)
+    assert mock_assignments.call_args.args[1] == "stored-token"
+    assert "stored-token" not in json.dumps(body)
+    assert session_client.get("/api/v1/workspace").json()["canvas"]["last_synced"]
 
 
-def test_sync_paginated_response() -> None:
+def test_sync_paginated_response(session_client) -> None:
     """Multiple assignments from multiple courses are all returned."""
-    with (
-        patch("app.canvas_routes.fetch_assignments", new_callable=AsyncMock) as mock_assignments,
-        patch("app.canvas_routes.fetch_courses", new_callable=AsyncMock) as mock_courses,
-    ):
-        from app.canvas_models import CanvasAssignment, CanvasCourse
+    from app.canvas_models import CanvasAssignment
 
+    _connect(session_client)
+    with patch("app.canvas_routes.fetch_assignments", new_callable=AsyncMock) as mock_assignments:
         mock_assignments.return_value = [
             CanvasAssignment(id=str(i), course_id="1", title=f"Assignment {i}")
             for i in range(12)
         ]
-        mock_courses.return_value = [CanvasCourse(id="1", name="CSE 101", course_code="CSE101")]
-        client = TestClient(app)
-        response = client.post(
-            "/api/v1/canvas/sync",
-            json={"canvas_url": "https://canvas.example.edu", "access_token": "tok"},
-        )
+        response = session_client.post("/api/v1/canvas/sync", json={"course_ids": ["1"]})
     assert response.status_code == 200
     assert response.json()["assignments_found"] == 12
+    assert response.json()["courses_scanned"] == 1
 
 
-def test_sync_unreachable_returns_502() -> None:
-    with patch("app.canvas_routes.fetch_assignments", new_callable=AsyncMock) as mock_sync:
-        mock_sync.side_effect = CanvasError(
-            code=CanvasErrorCode.UNREACHABLE, message="Cannot reach Canvas."
+def test_revoked_token_clears_connection(session_client) -> None:
+    _connect(session_client)
+    with patch("app.canvas_routes.fetch_assignments", new_callable=AsyncMock) as mock_assignments:
+        mock_assignments.side_effect = CanvasError(
+            code=CanvasErrorCode.UNAUTHORIZED, message="Invalid access token."
         )
-        client = TestClient(app)
-        response = client.post(
-            "/api/v1/canvas/sync",
-            json={"canvas_url": "https://canvas.example.edu", "access_token": "tok"},
-        )
-    assert response.status_code == 502
+        response = session_client.post("/api/v1/canvas/sync", json={})
+    assert response.status_code == 401
+    assert "reconnect" in response.json()["message"]
+    assert session_client.get("/api/v1/workspace").json()["canvas"] is None
+
+
+def test_disconnect_deletes_connection(session_client) -> None:
+    _connect(session_client)
+    assert session_client.delete("/api/v1/canvas/connection").status_code == 204
+    assert session_client.get("/api/v1/workspace").json()["canvas"] is None
+    assert session_client.post("/api/v1/canvas/sync", json={}).status_code == 409
