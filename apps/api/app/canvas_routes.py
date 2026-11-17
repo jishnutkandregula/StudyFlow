@@ -35,6 +35,7 @@ from app.canvas_models import (
     CanvasSyncRequest,
     CanvasSyncResponse,
 )
+from app.ratelimit import rate_limit
 from app.session import require_session
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,9 @@ def _unexpected() -> JSONResponse:
     ),
 )
 async def connect_canvas(
-    request: CanvasConnectRequest, record: storage.SessionRecord = Depends(require_session)
+    request: CanvasConnectRequest,
+    record: storage.SessionRecord = Depends(require_session),
+    _: None = Depends(rate_limit("canvas-connect", limit=5, window_seconds=600)),
 ) -> CanvasConnectResponse | JSONResponse:
     try:
         canvas_url = _validate_canvas_url(request.canvas_url)
@@ -101,6 +104,7 @@ async def connect_canvas(
 )
 async def list_courses(
     record: storage.SessionRecord = Depends(require_session),
+    _: None = Depends(rate_limit("canvas-courses", limit=20, window_seconds=600)),
 ) -> CanvasConnectResponse | JSONResponse:
     try:
         token = _stored_token(record)
@@ -128,7 +132,9 @@ async def list_courses(
     ),
 )
 async def sync_canvas(
-    request: CanvasSyncRequest, record: storage.SessionRecord = Depends(require_session)
+    request: CanvasSyncRequest,
+    record: storage.SessionRecord = Depends(require_session),
+    _: None = Depends(rate_limit("canvas-sync", limit=20, window_seconds=600)),
 ) -> CanvasSyncResponse | JSONResponse:
     try:
         token = _stored_token(record)

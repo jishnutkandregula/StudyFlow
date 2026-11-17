@@ -8,6 +8,7 @@ dependencies = [
   "uvicorn[standard]>=0.32,<1.0",
   "httpx>=0.27,<1.0",
   "cryptography>=43,<47",
+  "psycopg[binary,pool]>=3.2,<4",
   # Lets Pydantic evaluate `X | None` annotations on Python 3.9.
   "eval_type_backport>=0.2; python_version < '3.10'",
 ]

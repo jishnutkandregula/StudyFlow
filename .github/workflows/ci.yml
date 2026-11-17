@@ -22,6 +22,17 @@ jobs:
       matrix:
         # 3.9 is the macOS system Python; 3.12 is the deployment target.
         python-version: ["3.9", "3.12"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: studyflow
+          POSTGRES_PASSWORD: studyflow
+          POSTGRES_DB: studyflow_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U studyflow"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     defaults:
       run:
         working-directory: apps/api
@@ -38,7 +49,11 @@ jobs:
           python -m pip install -e ".[dev]"
       - name: Lint
         run: python -m ruff check app tests
-      - name: Test
+      - name: Test (SQLite)
+        run: python -m pytest tests -q
+      - name: Test (Postgres)
+        env:
+          STUDYFLOW_TEST_DATABASE_URL: postgresql://studyflow:studyflow@localhost:5432/studyflow_test
         run: python -m pytest tests -q
 
   web:

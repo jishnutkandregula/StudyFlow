@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 
 from app import storage
 from app.planner import BusyTimeBlock, LockedSession
-from app.session import clear_cookie, get_or_create_session, require_session
+from app.ratelimit import client_ip, limiter, rate_limit
+from app.session import COOKIE_NAME, clear_cookie, get_or_create_session, require_session
 
 MAX_WORKSPACE_BYTES = 512 * 1024
 
@@ -30,7 +31,7 @@ class WorkspaceTask(BaseModel):
     estimated_minutes: int = Field(gt=0, le=10_080)
     priority: int = Field(default=3, ge=1, le=5)
     course_weight: float = Field(default=10, gt=0, le=100)
-    source: Literal["manual", "canvas"] = "manual"
+    source: Literal["manual", "canvas", "sample"] = "manual"
     points: Optional[float] = None  # noqa: UP045
     url: Optional[str] = Field(default=None, max_length=1000)  # noqa: UP045
 
@@ -98,6 +99,15 @@ router = APIRouter(prefix="/api/v1/workspace", tags=["workspace"])
     "", response_model=WorkspaceResponse, summary="Load (or start) this browser's workspace"
 )
 def load_workspace(request: Request, response: Response) -> WorkspaceResponse:
+    if not request.cookies.get(COOKIE_NAME):
+        # Cap brand-new sessions per IP so the database can't be flooded with empty rows.
+        retry_after = limiter.check(f"new-session:{client_ip(request)}", 60, 3600)
+        if retry_after is not None:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many new sessions from this network. Try again later.",
+                headers={"Retry-After": str(max(1, round(retry_after)))},
+            )
     record = get_or_create_session(request, response)
     workspace = Workspace.model_validate(record.workspace) if record.workspace else None
     return WorkspaceResponse(
@@ -109,7 +119,9 @@ def load_workspace(request: Request, response: Response) -> WorkspaceResponse:
 
 @router.put("", response_model=SaveResponse, summary="Save the workspace")
 def save_workspace(
-    workspace: Workspace, record: storage.SessionRecord = Depends(require_session)
+    workspace: Workspace,
+    record: storage.SessionRecord = Depends(require_session),
+    _: None = Depends(rate_limit("workspace-save", limit=120, window_seconds=60)),
 ) -> SaveResponse:
     for block in workspace.busy_time:
         block.label = "Calendar event"

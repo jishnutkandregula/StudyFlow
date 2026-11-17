@@ -1,9 +1,13 @@
-"""SQLite persistence for anonymous StudyFlow sessions.
+"""Persistence for anonymous StudyFlow sessions (SQLite locally, Postgres in production).
 
 One row per browser session. Only a SHA-256 hash of the session id is stored,
 so a database leak cannot be replayed as a cookie. The Canvas token column is
-always encrypted (see crypto.py). SQLite keeps local development dependency-free;
-the narrow interface below is what a Postgres implementation would replace.
+always encrypted (see crypto.py).
+
+The backend is chosen by configuration: DATABASE_URL selects Postgres (pooled
+connections via psycopg 3); otherwise a local SQLite file is used. Both share
+the same SQL, written in the common subset (ON CONFLICT, TEXT columns), with
+"?" placeholders translated for psycopg.
 """
 
 from __future__ import annotations
@@ -14,10 +18,12 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from app.settings import get_settings
+
+_pools: dict[str, Any] = {}
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -58,25 +64,81 @@ class SessionRecord:
         return bool(self.canvas_token_enc and self.canvas_url)
 
 
+class _Db:
+    """A minimal cursor facade so call sites don't care which database is underneath."""
+
+    def __init__(self, connection: Any, postgres: bool) -> None:
+        self._connection = connection
+        self._postgres = postgres
+
+    def execute(self, sql: str, params: tuple[Any, ...] = ()) -> Any:
+        if self._postgres:
+            sql = sql.replace("?", "%s")
+        return self._connection.execute(sql, params)
+
+
+def _postgres_pool(url: str) -> Any:
+    pool = _pools.get(url)
+    if pool is None:
+        from psycopg.rows import dict_row
+        from psycopg_pool import ConnectionPool
+
+        pool = ConnectionPool(
+            url,
+            min_size=1,
+            max_size=5,
+            kwargs={"row_factory": dict_row},
+            open=True,
+        )
+        with pool.connection() as connection:
+            connection.execute(_SCHEMA)
+        _pools[url] = pool
+    return pool
+
+
 @contextmanager
-def _connect() -> Iterator[sqlite3.Connection]:
-    path = get_settings().db_path
+def _connect() -> Iterator[_Db]:
+    settings = get_settings()
+    if settings.database_url:
+        with _postgres_pool(settings.database_url).connection() as connection:
+            # The pool commits on clean exit and rolls back on error.
+            yield _Db(connection, postgres=True)
+        return
+
+    path = settings.db_path
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
     try:
         connection.execute(_SCHEMA)
-        yield connection
+        yield _Db(connection, postgres=False)
         connection.commit()
     finally:
         connection.close()
+
+
+def ping() -> None:
+    """Raise if the database can't answer a trivial query (used by readiness checks)."""
+
+    with _connect() as db:
+        db.execute("SELECT 1").fetchone()
+
+
+def purge_idle_sessions(max_idle: timedelta) -> int:
+    """Delete sessions untouched for longer than `max_idle`; returns how many were removed."""
+
+    cutoff = (datetime.now(timezone.utc) - max_idle).isoformat(timespec="seconds")
+    with _connect() as db:
+        result = db.execute("DELETE FROM sessions WHERE updated_at < ?", (cutoff,))
+        return result.rowcount or 0
 
 
 def create_session(id_hash: str) -> None:
     now = _now()
     with _connect() as db:
         db.execute(
-            "INSERT OR IGNORE INTO sessions (id_hash, created_at, updated_at) VALUES (?, ?, ?)",
+            "INSERT INTO sessions (id_hash, created_at, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT (id_hash) DO NOTHING",
             (id_hash, now, now),
         )
 
