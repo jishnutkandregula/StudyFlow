@@ -162,9 +162,12 @@ def _deadline(task: Task) -> datetime:
 
 
 def _due_label(task: Task) -> str:
+    """Human-friendly deadline, e.g. "Wed Nov 18 at 5:59 PM"."""
+    label = f"{task.due_date:%a %b} {task.due_date.day}"
     if task.due_time is None:
-        return task.due_date.isoformat()
-    return f"{task.due_date.isoformat()} at {task.due_time.strftime('%H:%M')}"
+        return label
+    clock = task.due_time.strftime("%I:%M %p").lstrip("0")
+    return f"{label} at {clock}"
 
 
 def _task_sort_key(task: Task) -> tuple[datetime, float, int, str]:

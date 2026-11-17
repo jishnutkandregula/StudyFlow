@@ -235,7 +235,7 @@ def test_sessions_end_before_due_time_on_due_date() -> None:
     assert all(s.ends_at <= datetime(2026, 11, 14, 19, 0) for s in plan.sessions)
     assert plan.scheduled_minutes == 60
     assert plan.unscheduled[0].remaining_minutes == 60
-    assert "at 19:00" in plan.sessions[0].explanation
+    assert "due Sat Nov 14 at 7:00 PM" in plan.sessions[0].explanation
 
 
 def test_earlier_due_time_wins_on_the_same_day() -> None:
