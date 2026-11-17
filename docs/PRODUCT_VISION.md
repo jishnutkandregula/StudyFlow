@@ -109,11 +109,11 @@ Honest gap analysis against the vision. ✅ done · 🟡 partial · ⬜ not star
 | Canvas URL validation + SSRF guard | ✅ | Tested; bare hostnames accepted |
 | Canvas courses + upcoming assignments | ✅ | Pagination; one failing course doesn't stop the sync |
 | Canvas error handling (401/403/404/network) | ✅ | Typed error codes |
-| Canvas assignment review before import | ⬜ | Courses can be picked, but assignments go straight into the task list |
-| Points, due *time*, link carried into the plan | 🟡 | Fetched by the API, then thrown away by the frontend (due date only, fixed 60-minute estimate) |
-| Missing-due-date handling | 🟡 | Silently filtered out; never shown to the student |
-| Dedup across syncs | 🟡 | By Canvas ID in memory; lost on page refresh |
-| Last-sync time / connection health | ⬜ | |
+| Canvas assignment review before import | ✅ | Include or exclude each assignment, edit estimates, open it in Canvas |
+| Points, due *time*, link carried into the plan | ✅ | Due times enforced by the planner; estimates default from points |
+| Missing-due-date handling | ✅ | Shown separately; the student can pick a date or leave them out |
+| Dedup across syncs | 🟡 | By Canvas ID; a re-sync keeps the student's earlier estimates. Lost on page refresh (phase C) |
+| Last-sync time / connection health | ✅ | Shown on the connection cards and in the Canvas modal |
 | Token server-side only | ⬜ | Token sits in React state and is sent on every sync (never stored or logged). Needs a server-side session store. |
 
 ### Planning and control
@@ -123,22 +123,22 @@ Honest gap analysis against the vision. ✅ done · 🟡 partial · ⬜ not star
 | Deadline/weight/priority ranking | ✅ | Deterministic, tested |
 | Availability, sleep, meals, protected time, daily cap, busy time | ✅ | |
 | Session chunking (focus length + breaks) | ✅ | |
-| Per-session explanations | ✅ | |
+| Per-session explanations | ✅ | "Why?" on every session, using readable deadlines |
 | Overall risk + unscheduled work warnings | ✅ | low / medium / high |
-| Four-level schedule health (on track → not recoverable) | 🟡 | Three levels today, with no explanation of what to change |
+| Four-level schedule health (on track → not recoverable) | 🟡 | Three levels (On track / Tight / At risk), plus a "Didn't fit" list with what to change |
 | Complete / longer / can't today / lock / move | ⬜ | |
-| Replanning with a "what changed" diff | ⬜ | |
+| Replanning with a "what changed" diff | 🟡 | The app flags a plan as out of date when inputs change; no diff yet |
 
 ### Product and UX
 
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Premium dark visual language | ✅ | |
-| Canvas connect flow with designed states | ✅ | Includes error boundary |
+| Canvas connect flow with designed states | ✅ | Three-step progress, Escape to close, retry goes back to the step that failed, error boundary |
 | Persistence across reloads | ⬜ | All state is in memory |
 | Onboarding sequence | ⬜ | Connections exist; no guided first run |
-| Dashboard data is real | 🟡 | Hard-coded date header, sample tasks, and a hard-coded student identity |
-| Accessibility / mobile pass | ⬜ | Not audited |
+| Dashboard data is real | ✅ | Live date, Canvas identity, no sample tasks; empty states for every panel |
+| Accessibility / mobile pass | 🟡 | Focus rings, labels, `aria-expanded`/`aria-live`, reduced motion, 375 px layout checked; no formal audit |
 
 ### Engineering
 
@@ -147,7 +147,7 @@ Honest gap analysis against the vision. ✅ done · 🟡 partial · ⬜ not star
 | Typed FastAPI + Pydantic boundaries | ✅ | |
 | Integration clients separate from business logic | ✅ | `canvas_client.py`, `lib/canvasClient.ts`, `lib/googleCalendar.ts` |
 | Backend unit + mocked-integration tests | ✅ | 30 tests |
-| Frontend component architecture | ⬜ | `page.tsx` is a single ~160-line component with very long lines |
+| Frontend component architecture | ✅ | `components/` (dashboard + `canvas/`), `lib/` for types, formatting, and API clients |
 | Frontend tests | ⬜ | |
 | Lint + typecheck | 🟡 | Ruff + `tsc`; no ESLint |
 | GitHub Actions CI | ✅ | API on Python 3.9 and 3.12, web typecheck and build |
@@ -156,7 +156,7 @@ Honest gap analysis against the vision. ✅ done · 🟡 partial · ⬜ not star
 
 ## The three highest-leverage next tasks
 
-### A. Assignment review + honest planning inputs (recommended)
+### A. Assignment review + honest planning inputs — ✅ shipped 2026-11-16
 
 - **User problem:** Canvas imports go straight into the plan with a fake 60-minute estimate. Points
   and due times are lost, and undated assignments disappear without a word. The student can't trust
@@ -188,7 +188,7 @@ token moves server-side and tasks, preferences, and sync history survive reloads
 before a public deployment, but it is the largest phase and does little for the core loop until A
 and B exist.
 
-**Recommendation: A, then B, then C**, each with its own approval, focused commits, and
+**Recommendation: B next, then C**, each with its own approval, focused commits, and
 verification.
 
 ## Phase checklist
@@ -206,7 +206,7 @@ Claim only what has been built and verified.
 | Full-stack Next.js + Python platform syncing Canvas coursework and Google Calendar availability into constraint-aware plans | 🟡 Both syncs work and feed the planner, but there is no persistence or assignment review yet |
 | Secure third-party integrations: OAuth, Canvas API, token handling, validation, pagination, error recovery, least privilege | 🟡 All true except server-side token custody (phase C) |
 | Scheduling engine honoring deadlines, recurring availability, calendar events, sleep, meals, protected time, daily caps | ✅ Earned |
-| Polished responsive UX with assignment review, sync status, explanations, re-planning controls | ⬜ Needs phases A + B |
+| Polished responsive UX with assignment review, sync status, explanations, re-planning controls | 🟡 Review, sync status, and explanations are done; replanning controls need phase B |
 | Automated tests, type checking, linting, CI, docs, reproducible setup | ✅ Earned (backend tests + CI); frontend tests would strengthen it |
 
 ## Portfolio checklist (eventually)

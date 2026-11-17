@@ -121,6 +121,12 @@ Use the address you see in the browser when you're logged in to Canvas — for e
 If the **New Access Token** button is missing, your school has disabled personal tokens; ask your
 Canvas administrator or use Google Calendar instead.
 
+### 3. Review before importing
+
+After choosing courses, StudyFlow lists every upcoming assignment with its due date, points, and a
+starting time estimate based on points. Untick anything you don't want planned, adjust estimates, and
+pick dates for assignments Canvas has no due date for. Syncing again keeps the estimates you set.
+
 ### Permissions
 
 A personal access token acts as your Canvas user, so it can see whatever your student account
