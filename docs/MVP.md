@@ -1,5 +1,8 @@
 # StudyFlow MVP Specification
 
+> **Note:** Some decisions here (Canvas and Google Calendar scope, import-first entry) are superseded by
+> [PRODUCT_VISION.md](PRODUCT_VISION.md), which is the current source of truth.
+
 ## MVP goal
 
 Help a college student create a realistic weekly study plan from manually entered coursework, personal availability, and protected time.

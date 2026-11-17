@@ -1,5 +1,8 @@
 # StudyFlow Roadmap
 
+> **Note:** Some decisions here (Canvas and Google Calendar scope, import-first entry) are superseded by
+> [PRODUCT_VISION.md](PRODUCT_VISION.md), which is the current source of truth.
+
 ## Guiding principle
 
 Build the smallest version that can genuinely help a student plan academic work around a real calendar and recover after falling behind.

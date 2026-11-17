@@ -1,5 +1,8 @@
 # StudyFlow Product Spec
 
+> **Note:** Some decisions here (Canvas and Google Calendar scope, import-first entry) are superseded by
+> [PRODUCT_VISION.md](PRODUCT_VISION.md), which is the current source of truth.
+
 ## Working name
 
 StudyFlow is a working name. We will choose a distinct public product name before launch.
