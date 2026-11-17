@@ -59,19 +59,22 @@ Student-approved calendar updates
 
 ## Project status
 
-The manual planning MVP is in active development. The first vertical slice includes a responsive
-Next.js interface and a tested FastAPI planning service. It supports manual coursework entry,
-deadline-first session generation, recurring editable availability, sleep and meal guardrails,
-protected commitments, daily study caps, and workload-risk reporting. Data persistence,
-coursework editing, onboarding, and true recovery recalculation are the next build steps.
+Working MVP. A student can:
 
-The initial focus remains a manual planning MVP:
+1. Connect **Canvas** with a personal access token, choose courses, and review every upcoming
+   assignment (include or exclude it, adjust estimates, date the undated ones) before it reaches
+   the plan.
+2. Connect **Google Calendar** read-only, so classes, shifts, and meetings become protected
+   busy time.
+3. Set availability, sleep, meals, recurring commitments, focus length, and a daily cap.
+4. Generate an explainable plan: sessions grouped by day, a "Why?" for each, and a four-level
+   schedule health (on track, tight, at risk, not recoverable) with a reason.
+5. Replan as life happens: mark a session done, add 30 minutes, lock a session in place, or take
+   today off. Every change shows what moved, and every change can be undone.
+6. Come back later: the workspace autosaves, and Canvas re-syncs in one click.
 
-1. Add courses and assignments.
-2. Define available study time and protected personal time.
-3. Generate an explainable weekly study plan.
-4. Identify workload risk.
-5. Re-plan after missed work.
+Next: accounts across devices, deployment, and optional study blocks written to Google Calendar.
+See the [product vision](docs/PRODUCT_VISION.md) for the full gap analysis.
 
 ## Run locally
 
@@ -94,7 +97,33 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The web app calls the API at `http://127.0.0.1:8000` by default.
+Open `http://localhost:3000`. Next.js proxies `/api/*` to the API at `http://127.0.0.1:8000`
+(override with `STUDYFLOW_API_ORIGIN`), so the browser only ever talks to one origin.
+
+### API configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `STUDYFLOW_ENV` | `development` | Set `production` to require a real secret key and secure cookies |
+| `STUDYFLOW_SECRET_KEY` | dev key file | Fernet key that encrypts stored Canvas tokens. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `STUDYFLOW_DB_PATH` | `apps/api/studyflow.db` | SQLite database location |
+| `STUDYFLOW_COOKIE_SECURE` | `true` in production | Send the session cookie over HTTPS only |
+| `STUDYFLOW_ALLOWED_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | CORS origins |
+
+In development, a key is generated once into `apps/api/.studyflow-dev-key` (owner-only
+permissions, gitignored) so saved Canvas connections survive API reloads.
+
+## Data and privacy
+
+- **Sessions:** StudyFlow has no accounts yet. Each browser gets an anonymous session in an
+  `HttpOnly`, `SameSite=Lax` cookie, and the server stores only a hash of its id. Writes also
+  require a custom header, which blocks cross-site request forgery.
+- **What's saved:** coursework, settings, the current plan, and Google Calendar busy *times*.
+  Calendar event titles never leave the browser.
+- **Canvas token:** sent once, encrypted at rest, never logged, never returned to the browser.
+  If Canvas rejects it later, StudyFlow deletes it and asks you to reconnect.
+- **Deleting:** Preferences → *Your data* → *Delete my StudyFlow data* erases the session
+  and the Canvas connection. *Disconnect Canvas* removes just the token.
 
 ## Canvas setup
 
@@ -141,8 +170,9 @@ can see. StudyFlow only makes read-only `GET` requests:
 No special scopes or admin rights are needed — a normal student account works. If your school
 enforces scoped developer keys, the token needs read access to the three endpoints above.
 
-The token is sent only to the StudyFlow API, used for the current request, and never stored or
-logged. You can revoke it at any time from **Account → Settings → Approved Integrations**.
+The token is sent to the StudyFlow API once, stored encrypted so later syncs need no token, and
+never logged or sent back to the browser. **Disconnect Canvas** deletes it immediately, and you
+can also revoke it in Canvas under **Account → Settings → Approved Integrations**.
 
 ## Development checks
 

@@ -105,16 +105,16 @@ Honest gap analysis against the vision. ✅ done · 🟡 partial · ⬜ not star
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Google Calendar read-only import | ✅ | Google sign-in popup in the browser, `calendar.readonly`, recurring events expanded (`singleEvents`) |
-| Calendar picker / disconnect | ⬜ | Reads every readable calendar, up to 50; no disconnect |
+| Calendar picker / disconnect | ⬜ | Reads every readable calendar, up to 50. Busy times persist; titles are never saved |
 | Canvas URL validation + SSRF guard | ✅ | Tested; bare hostnames accepted |
 | Canvas courses + upcoming assignments | ✅ | Pagination; one failing course doesn't stop the sync |
 | Canvas error handling (401/403/404/network) | ✅ | Typed error codes |
 | Canvas assignment review before import | ✅ | Include or exclude each assignment, edit estimates, open it in Canvas |
 | Points, due *time*, link carried into the plan | ✅ | Due times enforced by the planner; estimates default from points |
 | Missing-due-date handling | ✅ | Shown separately; the student can pick a date or leave them out |
-| Dedup across syncs | 🟡 | By Canvas ID; a re-sync keeps the student's earlier estimates. Lost on page refresh (phase C) |
+| Dedup across syncs | ✅ | By Canvas ID; re-syncs keep earlier estimates and leave finished work unticked. Persisted |
 | Last-sync time / connection health | ✅ | Shown on the connection cards and in the Canvas modal |
-| Token server-side only | ⬜ | Token sits in React state and is sent on every sync (never stored or logged). Needs a server-side session store. |
+| Token server-side only | ✅ | Sent once to `/connect`, Fernet-encrypted at rest, never returned. Re-sync needs no token; disconnect deletes it; a rejected token is purged |
 
 ### Planning and control
 
@@ -135,7 +135,7 @@ Honest gap analysis against the vision. ✅ done · 🟡 partial · ⬜ not star
 | --- | --- | --- |
 | Premium dark visual language | ✅ | |
 | Canvas connect flow with designed states | ✅ | Three-step progress, Escape to close, retry goes back to the step that failed, error boundary |
-| Persistence across reloads | ⬜ | All state is in memory |
+| Persistence across reloads | ✅ | Anonymous cookie session, SQLite store, debounced autosave, loading state, "delete my data". No cross-device accounts yet |
 | Onboarding sequence | ⬜ | Connections exist; no guided first run |
 | Dashboard data is real | ✅ | Live date, Canvas identity, no sample tasks; empty states for every panel |
 | Accessibility / mobile pass | 🟡 | Focus rings, labels, `aria-expanded`/`aria-live`, reduced motion, 375 px layout checked; no formal audit |
@@ -185,14 +185,17 @@ Mark complete / "will take longer" / "can't today" / lock a session, then replan
 difference from other planners. It is best built after A, because it acts on the same inputs and
 components.
 
-### C. Persistence + server-side Canvas session
+### C. Persistence + server-side Canvas session — ✅ shipped 2026-11-16
+
+Shipped as anonymous browser sessions (httpOnly cookie, hashed id, CSRF header) with SQLite and
+Fernet-encrypted Canvas tokens. Postgres and real accounts come with deployment.
 
 Add a database (SQLite in development, Postgres in production) and a session cookie, so the Canvas
 token moves server-side and tasks, preferences, and sync history survive reloads. This is required
 before a public deployment, but it is the largest phase and does little for the core loop until A
 and B exist.
 
-**Recommendation: C next** (saved data and a server-side Canvas session), then deployment, each with its own approval, focused commits, and
+**Next: deployment** (Postgres, a managed secret key, HTTPS), then accounts and a Google Calendar picker, each with its own approval, focused commits, and
 verification.
 
 ## Phase checklist
@@ -207,8 +210,8 @@ Claim only what has been built and verified.
 
 | Bullet | Status |
 | --- | --- |
-| Full-stack Next.js + Python platform syncing Canvas coursework and Google Calendar availability into constraint-aware plans | 🟡 Both syncs work and feed the planner, but there is no persistence or assignment review yet |
-| Secure third-party integrations: OAuth, Canvas API, token handling, validation, pagination, error recovery, least privilege | 🟡 All true except server-side token custody (phase C) |
+| Full-stack Next.js + Python platform syncing Canvas coursework and Google Calendar availability into constraint-aware plans | ✅ Earned. Deployment makes it demonstrable |
+| Secure third-party integrations: OAuth, Canvas API, token handling, validation, pagination, error recovery, least privilege | ✅ Earned: encrypted server-side token custody, SSRF-safe URLs, CSRF-protected cookie sessions |
 | Scheduling engine honoring deadlines, recurring availability, calendar events, sleep, meals, protected time, daily caps | ✅ Earned |
 | Polished responsive UX with assignment review, sync status, explanations, re-planning controls | ✅ Earned. Strongest once it's deployed with real users |
 | Automated tests, type checking, linting, CI, docs, reproducible setup | ✅ Earned (backend tests + CI); frontend tests would strengthen it |
