@@ -1,5 +1,7 @@
 # StudyFlow
 
+[![CI](https://github.com/jishnutkandregula/StudyFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/jishnutkandregula/StudyFlow/actions/workflows/ci.yml)
+
 > Adaptive academic planning for students who need to know what to do next—and how to recover when they fall behind.
 
 StudyFlow helps college students turn coursework, deadlines, and real calendar availability into realistic study plans.
@@ -87,6 +89,7 @@ Then start the web app in another:
 
 ```bash
 cd apps/web
+cp .env.example .env.local   # then fill in values as needed
 npm install
 npm run dev
 ```
