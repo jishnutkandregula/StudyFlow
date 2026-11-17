@@ -78,7 +78,8 @@ Start the API in one terminal:
 ```bash
 cd apps/api
 python3 -m venv .venv
-.venv/bin/python -m pip install "fastapi>=0.115" "uvicorn[standard]>=0.32"
+.venv/bin/python -m pip install -U pip
+.venv/bin/python -m pip install -e ".[dev]"
 .venv/bin/uvicorn app.main:app --reload
 ```
 
