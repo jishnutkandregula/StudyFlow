@@ -32,9 +32,29 @@ def test_http_is_upgraded_to_https() -> None:
     assert _validate_canvas_url("http://canvas.ucsc.edu") == "https://canvas.ucsc.edu"
 
 
-def test_bare_string_without_scheme_raises() -> None:
+def test_bare_hostname_gets_https_prepended() -> None:
+    assert _validate_canvas_url("canvas.ucsc.edu") == "https://canvas.ucsc.edu"
+
+
+def test_bare_hostname_with_path_keeps_only_host() -> None:
+    assert _validate_canvas_url("  canvas.ucsc.edu/courses/123/ ") == "https://canvas.ucsc.edu"
+
+
+def test_non_http_scheme_raises() -> None:
     with pytest.raises(CanvasError) as exc_info:
-        _validate_canvas_url("canvas.ucsc.edu")
+        _validate_canvas_url("ftp://canvas.ucsc.edu")
+    assert exc_info.value.code == CanvasErrorCode.INVALID_URL
+
+
+def test_bare_localhost_still_raises() -> None:
+    with pytest.raises(CanvasError) as exc_info:
+        _validate_canvas_url("localhost")
+    assert exc_info.value.code == CanvasErrorCode.INVALID_URL
+
+
+def test_bare_private_ip_still_raises() -> None:
+    with pytest.raises(CanvasError) as exc_info:
+        _validate_canvas_url("10.0.0.5")
     assert exc_info.value.code == CanvasErrorCode.INVALID_URL
 
 

@@ -103,7 +103,7 @@ export default function Home() {
                 <div className="canvas-modal-icon"><Icon name="canvas" /></div>
                 <h2>Connect Canvas</h2>
                 <p>Import your courses and upcoming assignments automatically.</p>
-                <label className="canvas-field"><span>Your school&#8217;s Canvas URL</span><input type="url" placeholder="canvas.university.edu" value={canvasUrlDraft} onChange={(e) => setCanvasUrlDraft(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter" && canvasUrlDraft.trim()) setCanvasStep("token"); }} /><small>The URL your school uses for Canvas</small></label>
+                <label className="canvas-field"><span>Your school&#8217;s Canvas URL</span><input type="text" inputMode="url" autoCapitalize="none" spellCheck={false} placeholder="canvas.university.edu" value={canvasUrlDraft} onChange={(e) => setCanvasUrlDraft(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter" && canvasUrlDraft.trim()) setCanvasStep("token"); }} /><small>The URL your school uses for Canvas</small></label>
                 <div className="canvas-modal-actions"><button className="glow-button" disabled={!canvasUrlDraft.trim()} onClick={() => setCanvasStep("token")}>Continue <Icon name="arrow" /></button></div>
               </div>
             )}

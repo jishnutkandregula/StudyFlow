@@ -99,11 +99,11 @@ personal access token. Click **Canvas LMS** in the Connections section and follo
 
 ### 1. Find your Canvas URL
 
-Use the base address you see in the browser when you're logged in to Canvas, including
-`https://` — for example `https://canvas.ucsc.edu` or `https://yourschool.instructure.com`.
+Use the address you see in the browser when you're logged in to Canvas — for example
+`canvas.ucsc.edu` or `https://yourschool.instructure.com`.
 
-- Enter only the scheme and host; any path (such as `/courses/123`) is ignored.
-- The URL must be HTTPS. `http://` is upgraded automatically.
+- `https://` is optional: a bare hostname gets it added, and `http://` is upgraded to HTTPS.
+- Any path (such as `/courses/123`) is ignored; only the host is used.
 - `localhost`, IP addresses, and hostnames without a domain are rejected.
 
 ### 2. Generate a personal access token

@@ -60,7 +60,8 @@ def _validate_canvas_url(raw_url: str) -> str:
     """Return the normalised Canvas base URL or raise CanvasError.
 
     Rules enforced:
-    - Must be HTTPS.
+    - A bare hostname gets https:// prepended; http:// is upgraded.
+    - Must be HTTPS (other schemes are rejected).
     - Hostname must not be localhost or an IP address literal.
     - Hostname must not resolve to a private or loopback network range
       (checked via DNS only if the hostname looks like an IP; literal IPs
@@ -68,6 +69,9 @@ def _validate_canvas_url(raw_url: str) -> str:
     - Trailing slashes are stripped.
     """
     url = raw_url.strip().rstrip("/")
+    if "://" not in url:
+        # Students usually paste a bare hostname such as canvas.school.edu.
+        url = "https://" + url
     if not url.startswith("https://"):
         # Upgrade http:// transparently; reject everything else.
         if url.startswith("http://"):
