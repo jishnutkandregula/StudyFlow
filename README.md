@@ -92,6 +92,48 @@ npm run dev
 
 Open `http://localhost:3000`. The web app calls the API at `http://127.0.0.1:8000` by default.
 
+## Canvas setup
+
+StudyFlow can import your active courses and upcoming assignments from Canvas LMS using a
+personal access token. Click **Canvas LMS** in the Connections section and follow the two steps.
+
+### 1. Find your Canvas URL
+
+Use the base address you see in the browser when you're logged in to Canvas, including
+`https://` — for example `https://canvas.ucsc.edu` or `https://yourschool.instructure.com`.
+
+- Enter only the scheme and host; any path (such as `/courses/123`) is ignored.
+- The URL must be HTTPS. `http://` is upgraded automatically.
+- `localhost`, IP addresses, and hostnames without a domain are rejected.
+
+### 2. Generate a personal access token
+
+1. In Canvas, open **Account → Settings** (left-hand global navigation).
+2. Scroll to **Approved Integrations** and click **+ New Access Token**.
+3. Enter a purpose (e.g. "StudyFlow") and, ideally, an expiration date.
+4. Click **Generate Token** and copy it immediately — Canvas shows it only once.
+5. Paste it into the StudyFlow token field.
+
+If the **New Access Token** button is missing, your school has disabled personal tokens; ask your
+Canvas administrator or use Google Calendar instead.
+
+### Permissions
+
+A personal access token acts as your Canvas user, so it can see whatever your student account
+can see. StudyFlow only makes read-only `GET` requests:
+
+| Endpoint | Used for |
+| --- | --- |
+| `/api/v1/users/self` | Verify the token and show your name |
+| `/api/v1/courses` | List your active student enrollments |
+| `/api/v1/courses/:id/assignments` | Fetch upcoming assignments for selected courses |
+
+No special scopes or admin rights are needed — a normal student account works. If your school
+enforces scoped developer keys, the token needs read access to the three endpoints above.
+
+The token is sent only to the StudyFlow API, used for the current request, and never stored or
+logged. You can revoke it at any time from **Account → Settings → Approved Integrations**.
+
 ## Development checks
 
 ```bash

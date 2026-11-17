@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { importCalendarEvents, requestCalendarToken } from "../lib/googleCalendar";
 import { type CanvasAssignment, type CanvasCourse, connectCanvas as apiConnectCanvas, syncCanvas as apiSyncCanvas } from "../lib/canvasClient";
+import { CanvasErrorBoundary } from "./CanvasErrorBoundary";
 
 type Task = { id: string; title: string; course: string; due_date: string; estimated_minutes: number; priority: number; course_weight: number };
 type Session = { task_id: string; task_title: string; course: string; starts_at: string; ends_at: string; minutes: number; explanation: string };
@@ -89,6 +90,7 @@ export default function Home() {
       <section id="preferences" className="preferences-panel"><button className="preferences-trigger" onClick={() => setShowPreferences((current) => !current)}><span><Icon name="settings" /></span><div><p className="kicker">GUARDRAILS</p><strong>Shape a plan around your actual life</strong><small>Availability, sleep, meals, work, and commitments</small></div><Icon name="arrow" /></button>{showPreferences && <div className="preferences-body"><div className="availability-editor"><h3>When can you study?</h3>{availability.map((day) => <div className="availability-row" key={day.day_of_week}><strong>{day.label}</strong><label><input type="checkbox" checked={!day.is_day_off} onChange={(event) => updateAvailability(day.day_of_week, { is_day_off: !event.target.checked })} />Available</label><input type="time" disabled={day.is_day_off} value={day.start_time.slice(0, 5)} onChange={(event) => updateAvailability(day.day_of_week, { start_time: `${event.target.value}:00` })} /><span>to</span><input type="time" disabled={day.is_day_off} value={day.end_time.slice(0, 5)} onChange={(event) => updateAvailability(day.day_of_week, { end_time: `${event.target.value}:00` })} /></div>)}</div><div className="guardrail-editor"><h3>Protect your rhythm</h3><div className="field-grid"><label>Sleep<input type="time" value={preferences.sleep_start.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, sleep_start: `${event.target.value}:00` })} /></label><label>Wake<input type="time" value={preferences.wake_time.slice(0, 5)} onChange={(event) => setPreferences({ ...preferences, wake_time: `${event.target.value}:00` })} /></label><label>Focus block<input min="25" max="120" type="number" value={preferences.focus_session_minutes} onChange={(event) => setPreferences({ ...preferences, focus_session_minutes: event.target.value })} /></label><label>Daily cap<input min="60" max="720" step="30" type="number" value={preferences.max_study_minutes_per_day} onChange={(event) => setPreferences({ ...preferences, max_study_minutes_per_day: event.target.value })} /></label></div><div className="protected-form"><input value={protectedDraft.label} onChange={(event) => setProtectedDraft({ ...protectedDraft, label: event.target.value })} placeholder="Protect a commitment" /><input type="time" value={protectedDraft.start_time.slice(0, 5)} onChange={(event) => setProtectedDraft({ ...protectedDraft, start_time: `${event.target.value}:00` })} /><input type="time" value={protectedDraft.end_time.slice(0, 5)} onChange={(event) => setProtectedDraft({ ...protectedDraft, end_time: `${event.target.value}:00` })} /><button type="button" onClick={addProtectedBlock}><Icon name="plus" /></button></div><div className="day-pills">{week.map((day) => <button type="button" className={protectedDraft.days_of_week.includes(day.day_of_week) ? "selected" : ""} onClick={() => toggleProtectedDay(day.day_of_week)} key={day.day_of_week}>{day.label}</button>)}</div>{protectedBlocks.map((block, index) => <div className="protected-item" key={`${block.label}-${index}`}><span>{block.label} · {block.start_time.slice(0, 5)}–{block.end_time.slice(0, 5)}</span><button onClick={() => setProtectedBlocks((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div>)}</div></div>}</section>
     </section>
       {canvasStep !== "idle" && (
+        <CanvasErrorBoundary onClose={closeCanvasModal}>
         <div className="canvas-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeCanvasModal(); }} role="dialog" aria-modal="true" aria-label="Connect Canvas LMS">
           <div className="canvas-modal">
             <div className="canvas-modal-header">
@@ -149,6 +151,7 @@ export default function Home() {
             )}
           </div>
         </div>
+        </CanvasErrorBoundary>
       )}
     </main>;
 }
