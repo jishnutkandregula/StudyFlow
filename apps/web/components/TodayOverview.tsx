@@ -1,5 +1,6 @@
 import { dayLabel, formatClock, formatDue, formatHours, plural, toDateKey } from "../lib/format";
-import type { Plan, RiskLevel, Task } from "../lib/types";
+import { healthLabel } from "../lib/health";
+import type { Plan, Session, Task } from "../lib/types";
 import { Icon } from "./Icon";
 
 type Props = {
@@ -11,15 +12,10 @@ type Props = {
   onGenerate: () => void;
   onOpenCanvas: () => void;
   onAddManual: () => void;
+  onDone: (session: Session) => void;
 };
 
-export const healthCopy: Record<RiskLevel, { label: string; detail: string }> = {
-  low: { label: "On track", detail: "Everything fits before its deadline." },
-  medium: { label: "Tight", detail: "Some work doesn’t fit yet — nothing is due in the next day." },
-  high: { label: "At risk", detail: "Work due within a day doesn’t fit your available time." },
-};
-
-export function TodayOverview({ now, tasks, plan, loading, courseColor, onGenerate, onOpenCanvas, onAddManual }: Props) {
+export function TodayOverview({ now, tasks, plan, loading, courseColor, onGenerate, onOpenCanvas, onAddManual, onDone }: Props) {
   const nextSession = plan?.sessions.find((session) => !now || new Date(session.ends_at) > now);
   const nextTask = nextSession && tasks.find((task) => task.id === nextSession.task_id);
   const requested = tasks.reduce((total, task) => total + task.estimated_minutes, 0);
@@ -78,6 +74,9 @@ export function TodayOverview({ now, tasks, plan, loading, courseColor, onGenera
                   <strong suppressHydrationWarning>{formatDue(nextTask.due_date, nextTask.due_time, now)}</strong>
                 </div>
               )}
+              <button className="now-done" onClick={() => onDone(nextSession)} disabled={loading} aria-label={`Mark ${nextSession.task_title} session done`}>
+                <Icon name="check" /> Done
+              </button>
             </div>
           </>
         ) : (
@@ -94,7 +93,7 @@ export function TodayOverview({ now, tasks, plan, loading, courseColor, onGenera
       <article className="pulse-card">
         <div className="card-eyebrow">
           SCHEDULE HEALTH
-          {plan && <span className={`health-badge ${plan.risk}`}>{healthCopy[plan.risk].label}</span>}
+          {plan && <span className={`health-badge ${plan.health}`}>{healthLabel[plan.health]}</span>}
         </div>
         <div className="pulse-number">
           {coverage ?? "—"}
@@ -102,11 +101,11 @@ export function TodayOverview({ now, tasks, plan, loading, courseColor, onGenera
         </div>
         <p>
           {plan
-            ? `${formatHours(plan.scheduled_minutes)} of ${formatHours(plan.requested_minutes)} placed into your real week. ${healthCopy[plan.risk].detail}`
+            ? `${formatHours(plan.scheduled_minutes)} of ${formatHours(plan.requested_minutes)} placed. ${plan.health_reason}`
             : "Generate a plan to see how much of your workload fits before each deadline."}
         </p>
         <div className="progress-track" role="progressbar" aria-label="Workload scheduled" aria-valuemin={0} aria-valuemax={100} aria-valuenow={coverage ?? 0}>
-          <span className={plan?.risk ?? ""} style={{ width: `${Math.min(100, coverage ?? 0)}%` }} />
+          <span className={plan?.health ?? ""} style={{ width: `${Math.min(100, coverage ?? 0)}%` }} />
         </div>
       </article>
 

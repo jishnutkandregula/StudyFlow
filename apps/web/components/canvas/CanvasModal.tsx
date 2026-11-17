@@ -26,6 +26,8 @@ type Props = {
   now: Date | null;
   connection: CanvasConnection | null;
   existingTasks: Task[];
+  /** Canvas task ids the student already finished in StudyFlow. */
+  completedIds: string[];
   onClose: () => void;
   onConnected: (connection: CanvasConnection) => void;
   onImport: (result: CanvasImport) => void;
@@ -33,7 +35,13 @@ type Props = {
 
 const taskId = (assignment: CanvasAssignment) => `canvas-${assignment.id}`;
 
-function toReviewItems(assignments: CanvasAssignment[], courses: CanvasCourse[], existing: Task[], now: Date): ReviewItem[] {
+function toReviewItems(
+  assignments: CanvasAssignment[],
+  courses: CanvasCourse[],
+  existing: Task[],
+  completedIds: Set<string>,
+  now: Date,
+): ReviewItem[] {
   const seen = new Set<string>();
   return assignments.flatMap((assignment) => {
     const id = taskId(assignment);
@@ -52,10 +60,11 @@ function toReviewItems(assignments: CanvasAssignment[], courses: CanvasCourse[],
       dueTime: due?.time ?? null,
       points: assignment.points_possible ?? null,
       url: assignment.html_url ?? null,
-      include: prior ? true : Boolean(due),
+      include: prior ? true : Boolean(due) && !completedIds.has(id),
       estimate: String(prior?.estimated_minutes ?? estimateFromPoints(assignment.points_possible)),
       manualDueDate: prior && !due ? prior.due_date : "",
       alreadyInPlan: Boolean(prior),
+      finished: completedIds.has(id),
     }];
   }).sort((a, b) => `${a.dueDate ?? "9999"}${a.dueTime ?? ""}`.localeCompare(`${b.dueDate ?? "9999"}${b.dueTime ?? ""}`));
 }
@@ -78,7 +87,7 @@ function toTask(item: ReviewItem, courses: CanvasCourse[]): Task {
   };
 }
 
-export function CanvasModal({ apiUrl, now, connection, existingTasks, onClose, onConnected, onImport }: Props) {
+export function CanvasModal({ apiUrl, now, connection, existingTasks, completedIds, onClose, onConnected, onImport }: Props) {
   const [step, setStep] = useState<Step>(connection ? "done" : "url");
   const [errorReturnStep, setErrorReturnStep] = useState<Step>("token");
   const [canvasUrl, setCanvasUrl] = useState(connection?.canvasUrl ?? "");
@@ -125,7 +134,7 @@ export function CanvasModal({ apiUrl, now, connection, existingTasks, onClose, o
     try {
       const ids = [...selectedCourses];
       const result = await syncCanvas(apiUrl, canvasUrl, token.trim(), ids.length < courses.length ? ids : undefined);
-      setItems(toReviewItems(result.assignments, courses, existingTasks, new Date()));
+      setItems(toReviewItems(result.assignments, courses, existingTasks, new Set(completedIds), new Date()));
       onConnected({ displayName, canvasUrl, courseCount: ids.length, lastSynced: new Date() });
       setToken("");
       setStep("assignments");

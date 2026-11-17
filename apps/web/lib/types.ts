@@ -27,7 +27,12 @@ export type Session = {
   ends_at: string;
   minutes: number;
   explanation: string;
+  locked?: boolean;
 };
+
+export type LockedSession = { task_id: string; starts_at: string; ends_at: string };
+
+export type PlanHealth = "on_track" | "tight" | "at_risk" | "not_recoverable";
 
 export type RiskLevel = "low" | "medium" | "high";
 
@@ -38,6 +43,7 @@ export type UnscheduledItem = {
   remaining_minutes: number;
   risk: RiskLevel;
   reason: string;
+  recoverable?: boolean;
 };
 
 export type Plan = {
@@ -47,6 +53,8 @@ export type Plan = {
   requested_minutes: number;
   available_minutes: number;
   risk: RiskLevel;
+  health: PlanHealth;
+  health_reason: string;
   explanation: string;
   warnings: string[];
 };
@@ -94,4 +102,18 @@ export type CalendarConnection = {
   lastSynced: Date;
 };
 
-export type Toast = { text: string; tone: "info" | "error" };
+export type Toast = {
+  text: string;
+  tone: "info" | "error";
+  action?: { label: string; onClick: () => void };
+};
+
+/** What a replan changed, shown so the student never has to diff plans by eye. */
+export type PlanChange = {
+  cause: string;
+  healthBefore: PlanHealth;
+  healthAfter: PlanHealth;
+  nowFits: string[];
+  noLongerFits: string[];
+  movedSessions: number;
+};

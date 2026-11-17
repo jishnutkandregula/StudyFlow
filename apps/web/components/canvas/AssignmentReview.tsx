@@ -17,6 +17,8 @@ export type ReviewItem = {
   /** Date the student picked for an assignment Canvas has no due date for. */
   manualDueDate: string;
   alreadyInPlan: boolean;
+  /** Marked done in StudyFlow earlier; left out by default on a re-sync. */
+  finished: boolean;
 };
 
 type Props = {
@@ -49,6 +51,7 @@ function Row({ item, now, onChange }: { item: ReviewItem; now: Date | null; onCh
           {undated ? "No due date in Canvas" : `Due ${formatDue(item.dueDate!, item.dueTime, now)}`}
           {item.points != null && ` · ${item.points} pts`}
           {item.alreadyInPlan && <span className="source-badge">In plan</span>}
+          {item.finished && <span className="source-badge finished">Finished</span>}
         </small>
         {undated && (
           <label className="review-date">

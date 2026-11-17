@@ -1,5 +1,14 @@
 import { localNowIso } from "./format";
-import type { BusyBlock, DailyAvailability, Plan, Preferences, ProtectedBlock, Task } from "./types";
+import type {
+  BusyBlock,
+  DailyAvailability,
+  LockedSession,
+  Plan,
+  PlanChange,
+  Preferences,
+  ProtectedBlock,
+  Task,
+} from "./types";
 
 export type PlanInputs = {
   tasks: Task[];
@@ -7,11 +16,15 @@ export type PlanInputs = {
   protectedBlocks: ProtectedBlock[];
   busyTime: BusyBlock[];
   preferences: Preferences;
+  lockedSessions: LockedSession[];
+  /** One-off YYYY-MM-DD days with no studying. */
+  blockedDates: string[];
 };
 
 /** Build the planner request body. Only fields the API understands are sent. */
 export function buildPlanRequest(inputs: PlanInputs) {
-  const { tasks, availability, protectedBlocks, busyTime, preferences } = inputs;
+  const { tasks, availability, protectedBlocks, busyTime, preferences, lockedSessions, blockedDates } = inputs;
+  const taskIds = new Set(tasks.map((task) => task.id));
   return {
     tasks: tasks.map((task) => ({
       id: task.id,
@@ -26,6 +39,8 @@ export function buildPlanRequest(inputs: PlanInputs) {
     recurring_availability: availability.map(({ label: _label, ...day }) => day),
     protected_time: protectedBlocks,
     busy_time: busyTime,
+    locked_sessions: lockedSessions.filter((session) => taskIds.has(session.task_id)),
+    blocked_dates: blockedDates,
     preferences: {
       sleep_start: preferences.sleep_start,
       wake_time: preferences.wake_time,
@@ -61,4 +76,23 @@ export async function generatePlan(apiUrl: string, inputs: PlanInputs): Promise<
   }
   if (!response.ok) throw new Error("StudyFlow couldn’t build a plan right now. Try again in a moment.");
   return (await response.json()) as Plan;
+}
+
+/** Summarize what changed between two plans for the same student. */
+export function diffPlans(before: Plan, after: Plan, cause: string): PlanChange {
+  const unscheduledBefore = new Set(before.unscheduled.map((item) => item.task_id));
+  const unscheduledAfter = new Set(after.unscheduled.map((item) => item.task_id));
+  const titles = new Map([...before.sessions, ...after.sessions].map((s) => [s.task_id, s.task_title]));
+  for (const item of [...before.unscheduled, ...after.unscheduled]) titles.set(item.task_id, item.task_title);
+  const afterTasks = new Set(after.sessions.map((s) => s.task_id));
+  const beforeSlots = new Set(before.sessions.map((s) => `${s.task_id}@${s.starts_at}`));
+  return {
+    cause,
+    healthBefore: before.health,
+    healthAfter: after.health,
+    // Only work that is still planned "now fits"; completed or removed tasks simply drop out.
+    nowFits: [...unscheduledBefore].filter((id) => !unscheduledAfter.has(id) && afterTasks.has(id)).map((id) => titles.get(id)!),
+    noLongerFits: [...unscheduledAfter].filter((id) => !unscheduledBefore.has(id)).map((id) => titles.get(id)!),
+    movedSessions: after.sessions.filter((s) => !s.locked && !beforeSlots.has(`${s.task_id}@${s.starts_at}`)).length,
+  };
 }

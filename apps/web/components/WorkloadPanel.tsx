@@ -13,15 +13,62 @@ type Props = {
   onToggleCapture: () => void;
   onAdd: (task: Task) => void;
   onRemove: (id: string) => void;
+  onEstimateChange: (id: string, minutes: number) => void;
+  completed: Array<{ id: string; title: string; course: string }>;
 };
 
 const emptyDraft = { title: "", course: "", due_date: "", due_time: "", estimated_minutes: "60" };
+
+/** The estimate doubles as an editor: click it, type minutes, press Enter. */
+function EstimateEditor({ task, onChange }: { task: Task; onChange: (minutes: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(task.estimated_minutes));
+
+  function commit() {
+    const minutes = Math.min(1440, Math.max(15, Math.round(Number(value) / 15) * 15 || 15));
+    setEditing(false);
+    if (minutes !== task.estimated_minutes) onChange(minutes);
+  }
+
+  if (!editing) {
+    return (
+      <button
+        className="task-time"
+        onClick={() => { setValue(String(task.estimated_minutes)); setEditing(true); }}
+        title="Edit estimate"
+        aria-label={`Estimate for ${task.title}: ${formatHours(task.estimated_minutes)}. Edit`}
+      >
+        {formatHours(task.estimated_minutes)}
+      </button>
+    );
+  }
+  return (
+    <label className="minutes-field compact task-estimate">
+      <input
+        type="number"
+        min="15"
+        max="1440"
+        step="15"
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        aria-label={`Estimated minutes for ${task.title}`}
+      />
+      <span>min</span>
+    </label>
+  );
+}
 
 function compareDeadline(a: Task, b: Task) {
   return `${a.due_date}T${a.due_time ?? "23:59:59"}`.localeCompare(`${b.due_date}T${b.due_time ?? "23:59:59"}`);
 }
 
-export function WorkloadPanel({ now, tasks, courseColor, showCapture, onToggleCapture, onAdd, onRemove }: Props) {
+export function WorkloadPanel({ now, tasks, courseColor, showCapture, onToggleCapture, onAdd, onRemove, onEstimateChange, completed }: Props) {
   const [draft, setDraft] = useState(emptyDraft);
   const sorted = [...tasks].sort(compareDeadline);
 
@@ -71,7 +118,12 @@ export function WorkloadPanel({ now, tasks, courseColor, showCapture, onToggleCa
         </form>
       )}
 
-      {!sorted.length ? (
+      {!sorted.length && completed.length ? (
+        <div className="empty-state">
+          <Icon name="check" />
+          <p>Everything on your list is done. Nice work.</p>
+        </div>
+      ) : !sorted.length ? (
         <div className="empty-state">
           <Icon name="canvas" />
           <p>Nothing here yet. Connect Canvas to import assignments, or add one with the + button.</p>
@@ -97,7 +149,7 @@ export function WorkloadPanel({ now, tasks, courseColor, showCapture, onToggleCa
                     {task.source === "canvas" && <span className="source-badge">Canvas</span>}
                   </small>
                 </div>
-                <span className="task-time">{formatHours(task.estimated_minutes)}</span>
+                <EstimateEditor key={task.estimated_minutes} task={task} onChange={(minutes) => onEstimateChange(task.id, minutes)} />
                 <button className="row-remove" onClick={() => onRemove(task.id)} aria-label={`Remove ${task.title}`}>
                   <Icon name="x" />
                 </button>
@@ -105,6 +157,17 @@ export function WorkloadPanel({ now, tasks, courseColor, showCapture, onToggleCa
             );
           })}
         </ul>
+      )}
+
+      {completed.length > 0 && (
+        <details className="completed-list">
+          <summary><Icon name="check" /> {completed.length} finished</summary>
+          <ul>
+            {completed.map((item) => (
+              <li key={item.id}><span>{item.title}</span><small>{item.course}</small></li>
+            ))}
+          </ul>
+        </details>
       )}
     </article>
   );

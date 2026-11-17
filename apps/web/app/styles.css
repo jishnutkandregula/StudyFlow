@@ -158,3 +158,59 @@ a.review-link:hover{background:rgba(255,255,255,.08);color:#fff}
 @media(max-width:520px){.canvas-modal.wide{width:100%}.review-footer{flex-direction:column;align-items:stretch}.review-row{flex-wrap:wrap}.minutes-field.compact{margin-left:25px}.now-actions{position:static;margin-top:22px}.now-card{min-height:auto}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms !important;animation-iteration-count:1 !important;scroll-behavior:auto !important;transition-duration:.01ms !important}}
 @media(max-width:780px){.now-card{min-height:auto;padding-bottom:23px}.now-footer,.now-actions{margin-top:26px;position:static}}
+/* ── Phase B: replanning controls ──────────────────────────────── */
+.health-badge.on_track{background:rgba(116,229,194,.14);color:#8ef0cf !important}
+.health-badge.tight{background:rgba(255,193,120,.14);color:#ffc98f !important}
+.health-badge.at_risk{background:rgba(255,150,100,.16);color:#ffb38a !important}
+.health-badge.not_recoverable{background:rgba(255,110,110,.18);color:#ff9d9d !important}
+.progress-track span.on_track{background:linear-gradient(90deg,#3fb58d,#8ef0cf)}
+.progress-track span.tight{background:linear-gradient(90deg,#d99a4e,#ffc98f)}
+.progress-track span.at_risk{background:linear-gradient(90deg,#d97a4e,#ffb38a)}
+.progress-track span.not_recoverable{background:linear-gradient(90deg,#d65b5b,#ff9d9d)}
+.pulse-card p{min-height:54px}
+.now-done{align-items:center;background:rgba(116,229,194,.14) !important;border:1px solid rgba(116,229,194,.3) !important;border-radius:10px !important;color:#8ef0cf !important;display:flex;font-size:12px;font-weight:600;gap:6px;height:auto !important;margin-left:auto;padding:8px 12px;width:auto !important}
+.now-done:hover{background:rgba(116,229,194,.24) !important}
+.now-done svg{height:14px !important;width:14px !important}
+.toast-action{align-items:center;background:rgba(255,255,255,.12) !important;border-radius:7px;display:flex;font-size:12px;font-weight:700;gap:5px;opacity:1 !important;padding:5px 9px !important}
+.toast-action+button{margin-left:4px !important}
+.toast-action svg{height:13px;width:13px}
+.change-summary{align-items:flex-start;animation:reveal .3s both;background:rgba(153,122,255,.08);border:1px solid rgba(176,159,255,.2);border-radius:10px;display:flex;gap:10px;margin-top:18px;padding:11px 12px}
+.change-summary.better{background:rgba(116,229,194,.07);border-color:rgba(116,229,194,.25)}
+.change-summary.worse{background:rgba(255,160,110,.07);border-color:rgba(255,170,120,.25)}
+.change-summary strong{display:block;font-size:12px}
+.change-summary strong span{color:#a7a4b2;font-weight:500}
+.change-summary.better strong span{color:#8ef0cf}
+.change-summary.worse strong span{color:#ffb38a}
+.change-summary p{color:#b8b3cb;font-size:11px;line-height:1.5;margin:4px 0 0}
+.change-summary button{align-items:center;background:transparent;border:0;color:#8b8898;display:flex;margin-left:auto;padding:2px}
+.change-summary button svg{height:13px;width:13px}
+.day-off-banner{align-items:center;background:rgba(116,182,255,.07);border:1px solid rgba(117,182,255,.22);border-radius:10px;color:#bcdcff;display:flex;font-size:12px;gap:10px;justify-content:space-between;margin-top:14px;padding:9px 12px}
+.day-off-banner button,.day-action{background:transparent;border:1px solid rgba(255,255,255,.14);border-radius:20px;color:#cfc9e3;font-size:10px;padding:3px 9px;white-space:nowrap}
+.day-off-banner button:hover,.day-action:hover{background:rgba(255,255,255,.08)}
+.day-action{font-weight:500;margin-left:auto}
+.session-row{grid-template-columns:62px minmax(0,1fr) auto}
+.session-actions{align-items:center;display:flex;gap:4px}
+.session-icon{align-items:center;background:transparent;border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#a7a4b2;display:flex;font-family:"DM Mono",monospace;font-size:10px;height:24px;justify-content:center;min-width:26px;opacity:.55;padding:0 5px;transition:.15s}
+.session-icon svg{height:12px;width:12px}
+.session-row:hover .session-icon,.session-row:focus-within .session-icon,.session-icon.active{opacity:1}
+.session-icon:hover{background:rgba(255,255,255,.08);color:#fff}
+.session-icon.done:hover{background:rgba(116,229,194,.16);border-color:rgba(116,229,194,.35);color:#8ef0cf}
+.session-icon.active{background:rgba(153,122,255,.2);border-color:rgba(176,159,255,.45);color:#d4c6ff}
+@media(hover:none){.session-icon{opacity:1}}
+.session-row.locked{background:rgba(153,122,255,.07);border-style:dashed;border-left-style:solid}
+.lock-badge{color:#c9b6ff;display:inline-flex;margin-right:5px;vertical-align:-1px}
+.lock-badge svg{height:11px;width:11px}
+.unscheduled li p{color:#a19eaf;font-size:10px;line-height:1.45;margin:5px 0 0}
+.unscheduled li{align-items:flex-start}
+button.task-time{background:transparent;border:1px dashed transparent;border-radius:6px;padding:3px 6px}
+button.task-time:hover{border-color:rgba(255,255,255,.18);color:#fff}
+.task-estimate{margin-left:auto}
+.source-badge.finished{background:rgba(116,229,194,.14);color:#8ef0cf}
+.completed-list{border-top:1px solid rgba(255,255,255,.08);margin-top:14px;padding-top:12px}
+.completed-list summary{align-items:center;color:#8ef0cf;cursor:pointer;display:flex;font-size:12px;gap:6px;list-style:none}
+.completed-list summary::-webkit-details-marker{display:none}
+.completed-list summary svg{height:13px;width:13px}
+.completed-list ul{display:grid;gap:6px;list-style:none;margin:10px 0 0;padding:0}
+.completed-list li{color:#8b8898;display:flex;font-size:11px;justify-content:space-between;text-decoration:line-through;text-decoration-color:rgba(255,255,255,.25)}
+.completed-list li small{font-size:10px;text-decoration:none}
+@media(max-width:520px){.session-row{grid-template-columns:52px minmax(0,1fr)}.session-actions{grid-column:1/-1;justify-content:flex-end}}

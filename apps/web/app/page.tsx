@@ -12,20 +12,25 @@ import { TodayOverview } from "../components/TodayOverview";
 import { Topbar } from "../components/Topbar";
 import { WorkloadPanel } from "../components/WorkloadPanel";
 import { courseColorMap } from "../lib/courseColors";
-import { plural, toLocalParts } from "../lib/format";
+import { formatHours, plural, toDateKey, toLocalParts } from "../lib/format";
 import { importCalendarEvents, requestCalendarToken } from "../lib/googleCalendar";
-import { generatePlan, type PlanInputs, planInputsKey } from "../lib/planApi";
+import { diffPlans, generatePlan, type PlanInputs, planInputsKey } from "../lib/planApi";
 import type {
   BusyBlock,
   CalendarConnection,
   CanvasConnection,
   DailyAvailability,
+  LockedSession,
   Plan,
+  PlanChange,
   Preferences,
   ProtectedBlock,
+  Session,
   Task,
   Toast,
 } from "../lib/types";
+
+type CompletedTask = { id: string; title: string; course: string };
 import { useNow } from "../lib/useNow";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
@@ -57,6 +62,10 @@ export default function Home() {
   const [preferences, setPreferences] = useState(defaultPreferences);
   const [protectedBlocks, setProtectedBlocks] = useState<ProtectedBlock[]>([]);
   const [busyTime, setBusyTime] = useState<BusyBlock[]>([]);
+  const [lockedSessions, setLockedSessions] = useState<LockedSession[]>([]);
+  const [blockedDates, setBlockedDates] = useState<string[]>([]);
+  const [completed, setCompleted] = useState<CompletedTask[]>([]);
+  const [change, setChange] = useState<PlanChange | null>(null);
 
   const [plan, setPlan] = useState<Plan | null>(null);
   const [planKey, setPlanKey] = useState("");
@@ -69,7 +78,8 @@ export default function Home() {
   const [canvas, setCanvas] = useState<CanvasConnection | null>(null);
   const [canvasOpen, setCanvasOpen] = useState(false);
 
-  const inputs: PlanInputs = { tasks, availability, protectedBlocks, busyTime, preferences };
+  const inputs: PlanInputs = { tasks, availability, protectedBlocks, busyTime, preferences, lockedSessions, blockedDates };
+  const todayKey = now ? toDateKey(now) : null;
   const currentKey = planInputsKey(inputs);
   const stale = Boolean(plan) && currentKey !== planKey;
   const courseColor = useMemo(() => courseColorMap(tasks.map((task) => task.course)), [tasks]);
@@ -77,32 +87,140 @@ export default function Home() {
 
   useEffect(() => {
     if (!toast || toast.tone === "error") return;
-    const id = window.setTimeout(() => setToast(null), 6000);
+    const id = window.setTimeout(() => setToast(null), toast.action ? 9000 : 6000);
     return () => window.clearTimeout(id);
   }, [toast]);
 
-  async function handleGenerate() {
-    if (!tasks.length) {
-      setToast({ text: "Add or import at least one assignment first.", tone: "error" });
+  /**
+   * The single path to a new plan. `cause` describes what the student did, so the
+   * plan view can say what changed; `undo` restores the state from before the action.
+   */
+  async function runPlan(next: PlanInputs, cause: string | null, notice?: { text: string; undo: () => void }) {
+    if (!next.tasks.length) {
+      setPlan(null);
+      setChange(null);
+      if (notice) setToast({ text: notice.text, tone: "info", action: { label: "Undo", onClick: notice.undo } });
       return;
     }
+    const previous = plan;
     setLoading(true);
-    setToast(null);
+    if (!notice) setToast(null);
     try {
-      const next = await generatePlan(apiUrl, inputs);
-      setPlan(next);
-      setPlanKey(currentKey);
-      setToast({
-        text: next.sessions.length
-          ? `Plan ready: ${plural(next.sessions.length, "focus session")} around your commitments.`
-          : "No sessions fit before your deadlines. See what didn’t fit below.",
-        tone: "info",
-      });
+      const result = await generatePlan(apiUrl, next);
+      setPlan(result);
+      setPlanKey(planInputsKey(next));
+      setChange(previous && cause ? diffPlans(previous, result, cause) : null);
+      setToast(
+        notice
+          ? { text: notice.text, tone: "info", action: { label: "Undo", onClick: notice.undo } }
+          : {
+              text: result.sessions.length
+                ? `Plan ready: ${plural(result.sessions.length, "focus session")} around your commitments.`
+                : "No sessions fit before your deadlines. See what didn’t fit below.",
+              tone: "info",
+            },
+      );
     } catch (error) {
       setToast({ text: error instanceof Error ? error.message : "Couldn’t build a plan.", tone: "error" });
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleGenerate() {
+    if (!tasks.length) {
+      setToast({ text: "Add or import at least one assignment first.", tone: "error" });
+      return;
+    }
+    void runPlan(inputs, plan ? "Replanned with your changes" : null);
+  }
+
+  /** Snapshot everything a session action can touch, so a single click can undo it. */
+  function snapshot() {
+    const saved = { tasks, lockedSessions, blockedDates, completed, plan, planKey };
+    return () => {
+      setTasks(saved.tasks);
+      setLockedSessions(saved.lockedSessions);
+      setBlockedDates(saved.blockedDates);
+      setCompleted(saved.completed);
+      setPlan(saved.plan);
+      setPlanKey(saved.planKey);
+      setChange(null);
+      setToast({ text: "Undone.", tone: "info" });
+    };
+  }
+
+  function applyAndReplan(
+    patch: { tasks?: Task[]; lockedSessions?: LockedSession[]; blockedDates?: string[]; completed?: CompletedTask[] },
+    cause: string,
+    text: string,
+  ) {
+    const undo = snapshot();
+    if (patch.tasks) setTasks(patch.tasks);
+    if (patch.lockedSessions) setLockedSessions(patch.lockedSessions);
+    if (patch.blockedDates) setBlockedDates(patch.blockedDates);
+    if (patch.completed) setCompleted(patch.completed);
+    void runPlan({ ...inputs, ...patch }, cause, { text, undo });
+  }
+
+  const sameSlot = (lock: LockedSession, session: Session) =>
+    lock.task_id === session.task_id && lock.starts_at === session.starts_at;
+
+  function handleSessionDone(session: Session) {
+    const task = tasks.find((item) => item.id === session.task_id);
+    if (!task) return;
+    const left = task.estimated_minutes - session.minutes;
+    const locks = lockedSessions.filter((lock) => !sameSlot(lock, session));
+    if (left < 15) {
+      applyAndReplan(
+        {
+          tasks: tasks.filter((item) => item.id !== task.id),
+          lockedSessions: locks.filter((lock) => lock.task_id !== task.id),
+          completed: [{ id: task.id, title: task.title, course: task.course }, ...completed],
+        },
+        `Finished “${task.title}”`,
+        `${task.title} is finished. Its remaining sessions were freed up.`,
+      );
+    } else {
+      applyAndReplan(
+        { tasks: tasks.map((item) => (item.id === task.id ? { ...item, estimated_minutes: left } : item)), lockedSessions: locks },
+        `Logged ${session.minutes}m on “${task.title}”`,
+        `Nice. ${formatHours(left)} left on ${task.title}.`,
+      );
+    }
+  }
+
+  function handleMoreTime(session: Session) {
+    const task = tasks.find((item) => item.id === session.task_id);
+    if (!task) return;
+    applyAndReplan(
+      { tasks: tasks.map((item) => (item.id === task.id ? { ...item, estimated_minutes: item.estimated_minutes + 30 } : item)) },
+      `“${task.title}” needs 30 more minutes`,
+      `${task.title} is now estimated at ${formatHours(task.estimated_minutes + 30)}.`,
+    );
+  }
+
+  function handleToggleLock(session: Session) {
+    const locked = lockedSessions.some((lock) => sameSlot(lock, session));
+    applyAndReplan(
+      {
+        lockedSessions: locked
+          ? lockedSessions.filter((lock) => !sameSlot(lock, session))
+          : [...lockedSessions, { task_id: session.task_id, starts_at: session.starts_at, ends_at: session.ends_at }],
+      },
+      locked ? `Unlocked “${session.task_title}”` : `Locked “${session.task_title}”`,
+      locked ? "Unlocked. StudyFlow can move this session again." : "Locked. This session stays put through every replan.",
+    );
+  }
+
+  function handleSkipToday() {
+    if (!todayKey) return;
+    applyAndReplan({ blockedDates: [...blockedDates, todayKey] }, "Took today off", "Today is off. Its work moved to later days.");
+  }
+
+  function handleUnskipToday() {
+    if (!todayKey) return;
+    applyAndReplan({ blockedDates: blockedDates.filter((day) => day !== todayKey) }, "Back on for today", "Today is available again.");
   }
 
   async function handleConnectCalendar() {
@@ -161,6 +279,11 @@ export default function Home() {
             <div className={`toast ${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}>
               <Icon name={toast.tone === "error" ? "alert" : "check"} />
               <span>{toast.text}</span>
+              {toast.action && (
+                <button className="toast-action" onClick={toast.action.onClick}>
+                  <Icon name="undo" />{toast.action.label}
+                </button>
+              )}
               <button onClick={() => setToast(null)} aria-label="Dismiss"><Icon name="x" /></button>
             </div>
           )}
@@ -188,6 +311,7 @@ export default function Home() {
             setShowCapture(true);
             document.getElementById("work")?.scrollIntoView({ behavior: "smooth", block: "start" });
           }}
+          onDone={handleSessionDone}
         />
 
         {plan?.warnings.length ? (
@@ -197,7 +321,22 @@ export default function Home() {
         ) : null}
 
         <section className="content-grid">
-          <PlanTimeline now={now} plan={plan} stale={stale} loading={loading} courseColor={courseColor} onGenerate={handleGenerate} />
+          <PlanTimeline
+            now={now}
+            plan={plan}
+            stale={stale}
+            loading={loading}
+            change={change}
+            todayBlocked={Boolean(todayKey && blockedDates.includes(todayKey))}
+            courseColor={courseColor}
+            onGenerate={handleGenerate}
+            onDismissChange={() => setChange(null)}
+            onDone={handleSessionDone}
+            onMoreTime={handleMoreTime}
+            onToggleLock={handleToggleLock}
+            onSkipToday={handleSkipToday}
+            onUnskipToday={handleUnskipToday}
+          />
           <WorkloadPanel
             now={now}
             tasks={tasks}
@@ -209,7 +348,14 @@ export default function Home() {
               setShowCapture(false);
               setToast({ text: `${task.title} added. Replan when you’re ready.`, tone: "info" });
             }}
-            onRemove={(id) => setTasks((current) => current.filter((task) => task.id !== id))}
+            onRemove={(id) => {
+              setTasks((current) => current.filter((task) => task.id !== id));
+              setLockedSessions((current) => current.filter((lock) => lock.task_id !== id));
+            }}
+            onEstimateChange={(id, minutes) =>
+              setTasks((current) => current.map((task) => (task.id === id ? { ...task, estimated_minutes: minutes } : task)))
+            }
+            completed={completed}
           />
         </section>
 
@@ -230,6 +376,7 @@ export default function Home() {
             now={now}
             connection={canvas}
             existingTasks={canvasTasks}
+            completedIds={completed.map((item) => item.id)}
             onClose={closeCanvas}
             onConnected={setCanvas}
             onImport={handleCanvasImport}
