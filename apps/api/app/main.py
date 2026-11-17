@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.canvas_routes import router as canvas_router
 from app.planner import PlanningRequest, PlanningResponse, generate_plan
 
 app = FastAPI(
@@ -16,6 +17,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(canvas_router)
 
 
 @app.get("/health", tags=["system"])
