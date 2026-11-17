@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, datetime, time
 
 from app.planner import (
     AvailabilityBlock,
@@ -208,3 +208,87 @@ def test_imported_calendar_event_is_treated_as_busy_time() -> None:
     plan = generate_plan(request, today=date(2026, 11, 16))
 
     assert all(session.starts_at.time() >= time(19) for session in plan.sessions)
+
+
+def _evening(day: date) -> AvailabilityBlock:
+    return AvailabilityBlock(date=day, start_time=time(18), end_time=time(23))
+
+
+def test_sessions_end_before_due_time_on_due_date() -> None:
+    request = PlanningRequest(
+        tasks=[
+            Task(
+                id="quiz",
+                title="Quiz prep",
+                course="STAT 131",
+                due_date=date(2026, 11, 14),
+                due_time=time(19, 0),
+                estimated_minutes=120,
+            )
+        ],
+        availability=[_evening(date(2026, 11, 14))],
+    )
+
+    plan = generate_plan(request, today=date(2026, 11, 14))
+
+    assert plan.sessions, "expected the hour before the deadline to be used"
+    assert all(s.ends_at <= datetime(2026, 11, 14, 19, 0) for s in plan.sessions)
+    assert plan.scheduled_minutes == 60
+    assert plan.unscheduled[0].remaining_minutes == 60
+    assert "at 19:00" in plan.sessions[0].explanation
+
+
+def test_earlier_due_time_wins_on_the_same_day() -> None:
+    request = PlanningRequest(
+        tasks=[
+            Task(
+                id="night",
+                title="Essay",
+                course="WRIT 2",
+                due_date=date(2026, 11, 15),
+                estimated_minutes=60,
+                course_weight=50,
+            ),
+            Task(
+                id="morning",
+                title="Lab check-off",
+                course="CSE 101",
+                due_date=date(2026, 11, 15),
+                due_time=time(9, 0),
+                estimated_minutes=60,
+            ),
+        ],
+        availability=[_evening(date(2026, 11, 14))],
+    )
+
+    plan = generate_plan(request, today=date(2026, 11, 14))
+
+    assert plan.sessions[0].task_id == "morning"
+
+
+def test_planning_start_skips_time_that_already_passed() -> None:
+    request = PlanningRequest(
+        tasks=[
+            Task(
+                id="lab",
+                title="Lab",
+                course="CSE 101",
+                due_date=date(2026, 11, 15),
+                estimated_minutes=60,
+            )
+        ],
+        availability=[_evening(date(2026, 11, 14))],
+        planning_start=datetime(2026, 11, 14, 20, 30),
+    )
+
+    plan = generate_plan(request)
+
+    assert plan.sessions[0].starts_at == datetime(2026, 11, 14, 20, 30)
+    assert plan.available_minutes == 150
+
+
+def test_task_without_due_time_is_backward_compatible() -> None:
+    task = Task.model_validate(
+        {"id": "a", "title": "A", "course": "C", "due_date": "2026-11-15", "estimated_minutes": 30}
+    )
+    assert task.due_time is None

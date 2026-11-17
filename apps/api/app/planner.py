@@ -18,6 +18,8 @@ class Task(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     course: str = Field(min_length=1, max_length=80)
     due_date: date
+    # Optional local due time. Without one, work may be scheduled until the end of due_date.
+    due_time: Optional[time] = None  # noqa: UP045 -- Python 3.9 runtime
     estimated_minutes: int = Field(gt=0, le=10_080)
     priority: int = Field(default=3, ge=1, le=5)
     course_weight: float = Field(default=1.0, gt=0, le=100)
@@ -112,6 +114,9 @@ class PlanningRequest(BaseModel):
     protected_time: list[ProtectedTimeBlock] = Field(default_factory=list)
     busy_time: list[BusyTimeBlock] = Field(default_factory=list)
     preferences: Optional[PlanningPreferences] = None  # noqa: UP045 -- Python 3.9 runtime
+    # The student's current local time. Nothing is scheduled before it, so a plan generated
+    # at 7 PM never suggests a session that already started at 9 AM.
+    planning_start: Optional[datetime] = None  # noqa: UP045 -- Python 3.9 runtime
     max_session_minutes: int = Field(default=90, ge=15, le=180)
     minimum_break_minutes: int = Field(default=10, ge=0, le=60)
 
@@ -152,8 +157,18 @@ class PlanningResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-def _task_sort_key(task: Task) -> tuple[date, float, int, str]:
-    return (task.due_date, -task.course_weight, -task.priority, task.title.lower())
+def _deadline(task: Task) -> datetime:
+    return datetime.combine(task.due_date, task.due_time or time.max)
+
+
+def _due_label(task: Task) -> str:
+    if task.due_time is None:
+        return task.due_date.isoformat()
+    return f"{task.due_date.isoformat()} at {task.due_time.strftime('%H:%M')}"
+
+
+def _task_sort_key(task: Task) -> tuple[datetime, float, int, str]:
+    return (_deadline(task), -task.course_weight, -task.priority, task.title.lower())
 
 
 def _risk(remaining_minutes: int, due_date: date, today: date) -> RiskLevel:
@@ -194,6 +209,8 @@ def _blocked_intervals(day: date, request: PlanningRequest) -> list[tuple[dateti
     """Build same-day intervals that must be subtracted from availability."""
 
     blocked: list[tuple[datetime, datetime]] = []
+    if request.planning_start is not None and request.planning_start.date() == day:
+        blocked.append((datetime.combine(day, time.min), request.planning_start))
     for item in request.busy_time:
         if item.date == day:
             blocked.append(
@@ -261,7 +278,9 @@ def generate_plan(request: PlanningRequest, today: date | None = None) -> Planni
     work than fits in supplied availability and reports any shortfall instead of hiding it.
     """
 
-    reference_date = today or date.today()
+    reference_date = today or (
+        request.planning_start.date() if request.planning_start else date.today()
+    )
     remaining = {task.id: task.estimated_minutes for task in request.tasks}
     sessions: list[PlannedSession] = []
     available_minutes = 0
@@ -289,10 +308,12 @@ def generate_plan(request: PlanningRequest, today: date | None = None) -> Planni
         for fragment_start, fragment_end in usable_fragments:
             cursor = fragment_start
             while cursor < fragment_end and daily_scheduled.get(block.date, 0) < daily_cap:
+                # A task is eligible only if a minimum-length session still ends by its deadline.
                 eligible = [
                     task
                     for task in request.tasks
-                    if remaining[task.id] > 0 and block.date <= task.due_date
+                    if remaining[task.id] > 0
+                    and cursor + timedelta(minutes=15) <= _deadline(task)
                 ]
                 if not eligible:
                     break
@@ -300,7 +321,10 @@ def generate_plan(request: PlanningRequest, today: date | None = None) -> Planni
                 task = min(eligible, key=_task_sort_key)
                 minutes_left = _interval_minutes(cursor, fragment_end)
                 day_remaining = daily_cap - daily_scheduled.get(block.date, 0)
-                target_minutes = min(remaining[task.id], session_limit, day_remaining)
+                minutes_to_deadline = _interval_minutes(cursor, _deadline(task))
+                target_minutes = min(
+                    remaining[task.id], session_limit, day_remaining, minutes_to_deadline
+                )
                 # Do not squeeze a full focus session into a smaller gap. A shorter task
                 # is allowed only when it genuinely fits inside the remaining interval.
                 if preferences is None:
@@ -319,7 +343,7 @@ def generate_plan(request: PlanningRequest, today: date | None = None) -> Planni
                         minutes=target_minutes,
                         explanation=(
                             f"Scheduled because {task.title} is due "
-                            f"{task.due_date.isoformat()} and "
+                            f"{_due_label(task)} and "
                             "has the highest deadline-and-importance priority among work that fits "
                             "this protected schedule."
                         ),
@@ -375,7 +399,7 @@ def generate_plan(request: PlanningRequest, today: date | None = None) -> Planni
     for task in request.tasks:
         if remaining[task.id] > 0 and task.due_date <= reference_date + timedelta(days=1):
             warnings.append(
-                f"{task.title} is due {task.due_date.isoformat()} but does not fully fit "
+                f"{task.title} is due {_due_label(task)} but does not fully fit "
                 "in your protected schedule."
             )
 
