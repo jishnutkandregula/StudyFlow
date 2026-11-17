@@ -1,0 +1,26 @@
+# Render Blueprint for the StudyFlow API. Secrets are declared here by name only
+# (sync: false); their values are entered in the Render dashboard, never committed.
+# See docs/DEPLOYMENT.md for the full setup checklist.
+services:
+  - type: web
+    name: studyflow-api
+    runtime: python
+    rootDir: apps/api
+    region: oregon # keep in the same region as the Vercel functions (US West)
+    plan: free # switch to "starter" (always-on) before sharing the link
+    buildCommand: pip install -U pip && pip install .
+    # --proxy-headers makes request.client the real visitor, so per-IP limits work behind proxies.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
+    healthCheckPath: /health/ready
+    autoDeployTrigger: checksPass # deploy main only after GitHub Actions CI passes
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: STUDYFLOW_ENV
+        value: production
+      - key: STUDYFLOW_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: STUDYFLOW_ALLOWED_ORIGINS
+        sync: false

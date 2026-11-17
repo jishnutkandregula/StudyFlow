@@ -106,7 +106,8 @@ Open `http://localhost:3000`. Next.js proxies `/api/*` to the API at `http://127
 | --- | --- | --- |
 | `STUDYFLOW_ENV` | `development` | Set `production` to require a real secret key and secure cookies |
 | `STUDYFLOW_SECRET_KEY` | dev key file | Fernet key that encrypts stored Canvas tokens. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| `STUDYFLOW_DB_PATH` | `apps/api/studyflow.db` | SQLite database location |
+| `DATABASE_URL` | unset | Postgres connection string; when set, it replaces SQLite (required in production) |
+| `STUDYFLOW_DB_PATH` | `apps/api/studyflow.db` | SQLite database location for local development |
 | `STUDYFLOW_COOKIE_SECURE` | `true` in production | Send the session cookie over HTTPS only |
 | `STUDYFLOW_ALLOWED_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | CORS origins |
 

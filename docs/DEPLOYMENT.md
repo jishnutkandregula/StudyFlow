@@ -1,6 +1,6 @@
 # Deployment Plan
 
-> Status: **proposed** (2026-11-17). Nothing is deployed yet. Hosting limits below were checked
+> Status: **D1 complete** (2026-11-17). The code is production-ready; nothing is deployed yet. Hosting limits below were checked
 > against public sources in November 2026; confirm current terms when creating accounts.
 
 ## Why this phase, and why now
@@ -47,7 +47,7 @@ Browser ──HTTPS──▶ Google Identity / Calendar API (read-only, token ne
 
 ## Work plan
 
-### D1 — Production readiness in code (I can do all of this)
+### D1 — Production readiness in code — ✅ done
 
 - **Postgres storage.** Add a Postgres backend (`psycopg` 3) selected by `DATABASE_URL`; keep
   SQLite for local dev and tests. Same repository interface; `INSERT OR IGNORE` → `ON CONFLICT DO
@@ -70,22 +70,54 @@ Browser ──HTTPS──▶ Google Identity / Calendar API (read-only, token ne
 - **Deploy config as code:** `render.yaml` (build, start, health check, env var names without
   values), Vercel project settings documented in this file.
 
+**Shipped:** everything above. Verified: 56 API tests on SQLite and on a real Postgres server,
+web typecheck/build, sample workspace load and clear, `/privacy`, headers, and no CSP violations in
+the console. Rate limits are in-memory, which is correct for a single API instance.
+
 **Acceptance:** CI green on SQLite *and* Postgres; production mode refuses a missing secret; demo
 workspace loads, is labelled, and clears; `/privacy` renders; rate limit returns 429 with a clear
 message; security headers present in `next build` output.
 
-### D2 — Accounts and secrets (you do this; I'll give exact steps)
+### D2 — Accounts and secrets (you do this)
 
-Creating accounts and entering secrets is yours to do. I'll write a click-by-click checklist:
+Creating accounts and entering secrets is yours to do. About 20 minutes; all free tiers, no card
+needed except to upgrade Render later.
 
-1. Neon: create project → copy the pooled connection string.
-2. Render: new web service from the GitHub repo using `render.yaml` → set `DATABASE_URL`,
-   `STUDYFLOW_SECRET_KEY` (generate locally), `STUDYFLOW_ENV=production`,
-   `STUDYFLOW_ALLOWED_ORIGINS`.
-3. Vercel: import repo, root `apps/web` → set `STUDYFLOW_API_ORIGIN` (Render URL) and
-   `NEXT_PUBLIC_GOOGLE_CLIENT_ID`.
-4. Google Cloud console: add the Vercel URL to *Authorized JavaScript origins*; add yourself and
-   any testers as test users.
+**1. Generate the encryption key (locally, once).** Keep it only in Render; don't commit or
+share it.
+
+```bash
+apps/api/.venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+**2. Neon (database).**
+1. Sign up at neon.com and create a project (region: *US West*, close to Render's Oregon region).
+2. Copy the **pooled** connection string (`postgresql://…-pooler…/neondb?sslmode=require`).
+
+**3. Render (API).**
+1. Sign up with GitHub and choose **New → Blueprint**, then select this repository. Render reads
+   `render.yaml`.
+2. When prompted, fill in the three secret values:
+   - `DATABASE_URL`: the Neon string from step 2.
+   - `STUDYFLOW_SECRET_KEY`: the key from step 1.
+   - `STUDYFLOW_ALLOWED_ORIGINS`: leave as `https://placeholder.invalid` for now; you'll update
+     it after step 4.
+3. Deploy, then open `https://<your-service>.onrender.com/health/ready`. You should see
+   `{"status":"ready"}`.
+
+**4. Vercel (web).**
+1. Sign up with GitHub and choose **Add New → Project**, then import this repository.
+2. Set **Root Directory** to `apps/web`; the framework is detected as Next.js.
+3. Add environment variables:
+   - `STUDYFLOW_API_ORIGIN`: `https://<your-service>.onrender.com`
+   - `NEXT_PUBLIC_GOOGLE_CLIENT_ID`: your existing client ID.
+4. Deploy and note the production URL (`https://<project>.vercel.app`).
+
+**5. Close the loop.**
+1. In Render, set `STUDYFLOW_ALLOWED_ORIGINS` to the Vercel URL. Render redeploys automatically.
+2. In Google Cloud Console → *APIs & Services → Credentials → your OAuth client*, add the Vercel
+   URL under **Authorized JavaScript origins**.
+3. Under *OAuth consent screen → Audience*, add each tester's Google account as a **test user**.
 
 ### D3 — Deploy and verify (together)
 
