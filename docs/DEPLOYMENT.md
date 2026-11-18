@@ -1,6 +1,7 @@
 # Deployment Plan
 
-> Status: **D1 complete** (2026-11-17). The code is production-ready; nothing is deployed yet. Hosting limits below were checked
+> Status: **Deployed** (2026-11-17). Web: https://study-flow-psi-two.vercel.app · API: https://studyflow-api-yaq3.onrender.com
+> (free tier). D1–D2 done; D3 partly verified (see below). Hosting limits below were checked
 > against public sources in November 2026; confirm current terms when creating accounts.
 
 ## Why this phase, and why now
@@ -78,7 +79,7 @@ the console. Rate limits are in-memory, which is correct for a single API instan
 workspace loads, is labelled, and clears; `/privacy` renders; rate limit returns 429 with a clear
 message; security headers present in `next build` output.
 
-### D2 — Accounts and secrets (you do this)
+### D2 — Accounts and secrets (you do this) — ✅ done
 
 Creating accounts and entering secrets is yours to do. About 20 minutes; all free tiers, no card
 needed except to upgrade Render later.
@@ -126,6 +127,13 @@ apps/api/.venv/bin/python -c "from cryptography.fernet import Fernet; print(Fern
   save/reload, sample workspace, plan generation, Canvas connect with a real token, Calendar
   connect as a test user, delete-my-data.
 - **Acceptance:** every smoke-test item passes on a phone and a laptop; no secrets in logs.
+
+**Verified on 2026-11-17 against production:** `/health/ready` reports ready (API ↔ Neon); the `/api`
+proxy works same-origin; the session cookie is `HttpOnly; Secure; SameSite=Lax`; CORS allows only the
+Vercel origin; writes without the CSRF header return 403; security headers (CSP, HSTS, DENY framing,
+nosniff) are present; the sample workspace loads, survives a reload, and clears; delete-my-data wipes
+the session; no console errors; no horizontal scroll at 375px. **Still to verify by hand:** Canvas
+connect with a real token, Calendar connect as a test user, and a pass on a real phone.
 
 ### D4 — Make it portfolio-ready
 
