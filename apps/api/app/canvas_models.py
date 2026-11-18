@@ -16,7 +16,7 @@ Design choices
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -71,6 +71,16 @@ class CanvasConnectRequest(BaseModel):
     )
 
 
+class CanvasFeedConnectRequest(BaseModel):
+    """Payload for connecting with the private Calendar Feed link."""
+
+    feed_url: str = Field(
+        min_length=20,
+        max_length=512,
+        description="Canvas Calendar Feed link, e.g. https://canvas.school.edu/feeds/calendars/user_….ics",
+    )
+
+
 class CanvasSyncRequest(BaseModel):
     """Fetch assignments using the Canvas connection stored for this session."""
 
@@ -117,6 +127,9 @@ class CanvasConnectResponse(BaseModel):
     canvas_url: str = Field(description="Normalised Canvas base URL.")
     # Courses are returned immediately to avoid a second round-trip in the UI.
     courses: list[CanvasCourse]
+    method: Literal["token", "feed"] = Field(
+        default="token", description="How this session is connected to Canvas."
+    )
 
 
 class CanvasSyncResponse(BaseModel):

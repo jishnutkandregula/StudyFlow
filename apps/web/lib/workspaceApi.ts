@@ -44,7 +44,7 @@ type WorkspaceDto = {
 
 type LoadResponse = {
   workspace: WorkspaceDto | null;
-  canvas: { canvas_url: string; display_name: string; connected_at: string | null; last_synced: string | null } | null;
+  canvas: { canvas_url: string; display_name: string; method?: "token" | "feed"; connected_at: string | null; last_synced: string | null } | null;
   saved_at: string | null;
 };
 
@@ -63,6 +63,7 @@ export async function loadWorkspace(): Promise<LoadedWorkspace> {
       ? {
           displayName: data.canvas.display_name,
           canvasUrl: data.canvas.canvas_url,
+          method: data.canvas.method ?? "token",
           lastSynced: data.canvas.last_synced ? new Date(data.canvas.last_synced) : null,
         }
       : null,

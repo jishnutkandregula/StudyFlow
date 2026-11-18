@@ -14,7 +14,7 @@ from typing import Any, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from app import storage
+from app import crypto, storage
 from app.planner import BusyTimeBlock, LockedSession
 from app.ratelimit import client_ip, limiter, rate_limit
 from app.session import COOKIE_NAME, clear_cookie, get_or_create_session, require_session
@@ -67,6 +67,7 @@ class Workspace(BaseModel):
 class CanvasStatus(BaseModel):
     canvas_url: str
     display_name: str
+    method: Literal["token", "feed"] = "token"
     connected_at: Optional[str] = None  # noqa: UP045
     last_synced: Optional[str] = None  # noqa: UP045
 
@@ -84,9 +85,14 @@ class SaveResponse(BaseModel):
 def canvas_status(record: storage.SessionRecord) -> Optional[CanvasStatus]:  # noqa: UP045
     if not record.canvas_connected:
         return None
+    try:
+        feed = crypto.decrypt(record.canvas_token_enc or "").startswith("feed:")
+    except crypto.CredentialError:
+        feed = False
     return CanvasStatus(
         canvas_url=record.canvas_url or "",
         display_name=record.canvas_display_name or "",
+        method="feed" if feed else "token",
         connected_at=record.canvas_connected_at,
         last_synced=record.canvas_last_synced,
     )

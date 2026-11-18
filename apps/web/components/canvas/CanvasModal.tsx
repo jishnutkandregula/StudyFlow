@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   type CanvasAssignment,
+  type CanvasConnectResult,
   type CanvasCourse,
+  canvasHost,
   connectCanvas,
+  connectCanvasFeed,
+  isCanvasFeedLink,
+  KNOWN_CANVAS_HOSTS,
   disconnectCanvas,
   listCanvasCourses,
   RECONNECT_CODES,
@@ -16,7 +21,7 @@ import type { CanvasConnection, Task } from "../../lib/types";
 import { Icon } from "../Icon";
 import { AssignmentReview, isSchedulable, type ReviewItem } from "./AssignmentReview";
 
-type Step = "url" | "token" | "connecting" | "loading" | "courses" | "syncing" | "assignments" | "done" | "error";
+type Step = "feed" | "url" | "token" | "connecting" | "loading" | "courses" | "syncing" | "assignments" | "done" | "error";
 
 export type CanvasImport = {
   /** Canvas tasks to keep in the plan after review. */
@@ -60,7 +65,9 @@ function toReviewItems(
       id,
       title: assignment.title,
       courseId: assignment.course_id,
-      courseLabel: course ? `${course.course_code} · ${course.name}` : `Course ${assignment.course_id}`,
+      courseLabel: course
+        ? course.course_code && course.course_code !== course.name ? `${course.course_code} · ${course.name}` : course.name
+        : `Course ${assignment.course_id}`,
       dueDate: due?.date ?? null,
       dueTime: due?.time ?? null,
       points: assignment.points_possible ?? null,
@@ -93,9 +100,14 @@ function toTask(item: ReviewItem, courses: CanvasCourse[]): Task {
 }
 
 export function CanvasModal({ now, connection, existingTasks, completedIds, onClose, onConnected, onDisconnected, onImport }: Props) {
-  const [step, setStep] = useState<Step>(connection ? "done" : "url");
-  const [errorReturnStep, setErrorReturnStep] = useState<Step>("token");
+  const [step, setStep] = useState<Step>(connection ? "done" : "feed");
+  const [errorReturnStep, setErrorReturnStep] = useState<Step>("feed");
   const [canvasUrl, setCanvasUrl] = useState(connection?.canvasUrl ?? "");
+  const [school, setSchool] = useState(connection ? canvasHost(connection.canvasUrl) : "");
+  const [feedLink, setFeedLink] = useState("");
+  const [feedHint, setFeedHint] = useState("");
+  const [method, setMethod] = useState<CanvasConnection["method"]>(connection?.method ?? "feed");
+  const feedInput = useRef<HTMLInputElement>(null);
   // The token is held only until /connect accepts it; after that the API keeps it, encrypted.
   const [token, setToken] = useState("");
   const [displayName, setDisplayName] = useState(connection?.displayName ?? "");
@@ -115,10 +127,10 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
   }, [step, onClose]);
 
   function fail(err: unknown, fallback: string, returnTo: Step) {
-    if (err instanceof ApiError && RECONNECT_CODES.has(err.code) && returnTo !== "token") {
-      // The saved token no longer works: the API already forgot it.
+    if (err instanceof ApiError && RECONNECT_CODES.has(err.code) && returnTo !== "token" && returnTo !== "feed") {
+      // The saved token or feed link no longer works: the API already forgot it.
       onDisconnected();
-      returnTo = "token";
+      returnTo = method === "token" ? "token" : "feed";
     }
     setError(err instanceof Error ? err.message : fallback);
     setErrorReturnStep(returnTo);
@@ -131,20 +143,63 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
     setStep("courses");
   }
 
+  function connected(result: CanvasConnectResult) {
+    setCanvasUrl(result.canvas_url);
+    setDisplayName(result.display_name);
+    setMethod(result.method);
+    onConnected({
+      displayName: result.display_name,
+      canvasUrl: result.canvas_url,
+      method: result.method,
+      lastSynced: connection?.lastSynced ?? null,
+    });
+    showCourses(result.courses);
+  }
+
   async function connect() {
     if (!canvasUrl.trim() || !token.trim()) return;
     setStep("connecting");
     try {
       const result = await connectCanvas(canvasUrl.trim(), token.trim());
       setToken("");
-      setCanvasUrl(result.canvas_url);
-      setDisplayName(result.display_name);
-      onConnected({ displayName: result.display_name, canvasUrl: result.canvas_url, lastSynced: connection?.lastSynced ?? null });
-      showCourses(result.courses);
+      connected(result);
     } catch (err) {
       fail(err, "Could not connect to Canvas.", "token");
     }
   }
+
+  /** One paste: the feed link alone identifies the school and the student. */
+  async function connectFeed(link: string) {
+    if (!isCanvasFeedLink(link)) {
+      setFeedHint("That doesn’t look like a Calendar Feed link. It should end in .ics.");
+      return;
+    }
+    setFeedHint("");
+    setStep("connecting");
+    try {
+      const result = await connectCanvasFeed(link.trim());
+      setFeedLink("");
+      connected(result);
+    } catch (err) {
+      fail(err, "Could not connect to Canvas.", "feed");
+    }
+  }
+
+  async function pasteFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      setFeedLink(text.trim());
+      if (isCanvasFeedLink(text)) void connectFeed(text);
+      else setFeedHint("Your clipboard doesn’t have a feed link yet. Copy it from Canvas first.");
+    } catch {
+      // Clipboard access denied or unsupported: fall back to a manual paste.
+      setFeedHint("Paste the link into the box (⌘V or long-press → Paste).");
+      feedInput.current?.focus();
+    }
+  }
+
+  const schoolHost = canvasHost(school);
+  const schoolLooksValid = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(schoolHost);
 
   /** Re-sync with the saved connection: no token needed. */
   async function resync() {
@@ -162,7 +217,7 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
       const ids = [...selectedCourses];
       const result = await syncCanvas(ids.length < courses.length ? ids : undefined);
       setItems(toReviewItems(result.assignments, courses, existingTasks, new Set(completedIds), new Date()));
-      onConnected({ displayName, canvasUrl, lastSynced: new Date() });
+      onConnected({ displayName, canvasUrl, method, lastSynced: new Date() });
       setStep("assignments");
     } catch (err) {
       fail(err, "Could not sync Canvas assignments.", "courses");
@@ -190,7 +245,7 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
     setStep("done");
   }
 
-  const backTarget: Partial<Record<Step, Step>> = { token: "url", courses: "token" };
+  const backTarget: Partial<Record<Step, Step>> = { url: "feed", token: "url", courses: connection ? "done" : method === "token" ? "token" : "feed" };
   const busy = step === "connecting" || step === "loading" || step === "syncing";
 
   return (
@@ -205,10 +260,98 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
 
         <ol className="canvas-progress" aria-label="Progress">
           {["Connect", "Courses", "Review"].map((label, index) => {
-            const position = { url: 0, token: 0, connecting: 0, loading: 1, courses: 1, syncing: 1, assignments: 2, done: 3, error: -1 }[step];
+            const position = { feed: 0, url: 0, token: 0, connecting: 0, loading: 1, courses: 1, syncing: 1, assignments: 2, done: 3, error: -1 }[step];
             return <li key={label} className={position > index ? "complete" : position === index ? "current" : ""}>{label}</li>;
           })}
         </ol>
+
+        {step === "feed" && (
+          <div className="canvas-step">
+            <div className="canvas-modal-icon"><Icon name="canvas" /></div>
+            <h2 id="canvas-modal-title">Connect Canvas</h2>
+            <p>Two quick steps, no passwords or tokens. You’ll review every assignment before it reaches your plan.</p>
+
+            <ol className="feed-steps">
+              <li>
+                <div className="feed-step-head"><span className="feed-step-num">1</span><strong>Open your Canvas calendar</strong></div>
+                <div className="feed-school-row">
+                  <input
+                    type="text"
+                    inputMode="url"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    list="canvas-hosts"
+                    aria-label="Your school’s Canvas address"
+                    placeholder="canvas.yourschool.edu"
+                    value={school}
+                    onChange={(e) => setSchool(e.target.value)}
+                  />
+                  <datalist id="canvas-hosts">{KNOWN_CANVAS_HOSTS.map((host) => <option key={host} value={host} />)}</datalist>
+                  <a
+                    className={`feed-open${schoolLooksValid ? "" : " disabled"}`}
+                    href={schoolLooksValid ? `https://${schoolHost}/calendar` : undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-disabled={!schoolLooksValid}
+                    onClick={() => window.setTimeout(() => feedInput.current?.focus(), 400)}
+                  >
+                    Open <Icon name="link" />
+                  </a>
+                </div>
+                <div className="feed-diagram" aria-hidden="true">
+                  <div className="feed-diagram-cal">
+                    {Array.from({ length: 14 }, (_, i) => <span key={i} className={i === 9 ? "dot" : undefined} />)}
+                  </div>
+                  <div className="feed-diagram-side">
+                    <span /><span /><span />
+                    <b>Calendar Feed</b>
+                  </div>
+                </div>
+                <small>In Canvas, click <b>Calendar Feed</b> at the bottom right of the calendar and copy the link.</small>
+              </li>
+              <li>
+                <div className="feed-step-head"><span className="feed-step-num">2</span><strong>Paste it here</strong></div>
+                <div className="feed-paste-row">
+                  <input
+                    ref={feedInput}
+                    type="url"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    autoComplete="off"
+                    aria-label="Canvas Calendar Feed link"
+                    placeholder="https://…/feeds/calendars/user_….ics"
+                    value={feedLink}
+                    onChange={(e) => {
+                      setFeedLink(e.target.value);
+                      setFeedHint("");
+                    }}
+                    onPaste={(e) => {
+                      const text = e.clipboardData.getData("text");
+                      if (isCanvasFeedLink(text)) {
+                        e.preventDefault();
+                        setFeedLink(text.trim());
+                        void connectFeed(text);
+                      }
+                    }}
+                    onKeyDown={(e) => { if (e.key === "Enter" && feedLink.trim()) void connectFeed(feedLink); }}
+                  />
+                  <button className="glow-button" onClick={() => (feedLink.trim() ? void connectFeed(feedLink) : void pasteFromClipboard())}>
+                    {feedLink.trim() ? <>Connect <Icon name="arrow" /></> : <><Icon name="paste" />Paste link</>}
+                  </button>
+                </div>
+                {feedHint && <small className="feed-hint" role="status">{feedHint}</small>}
+              </li>
+            </ol>
+
+            <div className="canvas-token-notice">
+              <Icon name="lock" />
+              <span>The link is private, so StudyFlow treats it like a password: encrypted, never logged, never shown again, and deleted when you disconnect.</span>
+            </div>
+            <button className="feed-alt" onClick={() => setStep("url")}>
+              Your school allows access tokens? <u>Connect with a token</u> to also import points.
+            </button>
+          </div>
+        )}
 
         {step === "url" && (
           <div className="canvas-step">
@@ -251,7 +394,7 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
             <h2 id="canvas-modal-title" className="sr-only">Working</h2>
             <p>
               {step === "connecting"
-                ? "Verifying your token and finding courses…"
+                ? token ? "Verifying your token and finding courses…" : "Reading your Canvas calendar…"
                 : step === "loading"
                   ? "Loading your courses…"
                   : `Reading assignments from ${plural(selectedCourses.size, "course")}…`}
@@ -262,7 +405,7 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
         {step === "courses" && (
           <div className="canvas-step">
             <h2 id="canvas-modal-title">Choose courses</h2>
-            <p className="canvas-user-name">Signed in as {displayName}</p>
+            <p className="canvas-user-name">{method === "feed" ? `From ${displayName}` : `Signed in as ${displayName}`}</p>
             {courses.length ? (
               <div className="canvas-course-list">
                 {courses.map((course) => (
@@ -277,12 +420,20 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
                         return next;
                       })}
                     />
-                    <div><strong>{course.name}</strong><small>{course.course_code}{course.term ? ` · ${course.term}` : ""}</small></div>
+                    <div>
+                      <strong>{course.name}</strong>
+                      {(course.course_code !== course.name || course.term) && (
+                        <small>{[course.course_code !== course.name ? course.course_code : "", course.term ?? ""].filter(Boolean).join(" · ")}</small>
+                      )}
+                    </div>
                   </label>
                 ))}
               </div>
             ) : (
-              <div className="empty-state compact"><Icon name="canvas" /><p>No active student enrollments were found on this Canvas account.</p></div>
+              <div className="empty-state compact">
+                <Icon name="canvas" />
+                <p>{method === "feed" ? "Your Canvas calendar has no upcoming assignments right now. Sync again when new work is posted." : "No active student enrollments were found on this Canvas account."}</p>
+              </div>
             )}
             <p className="canvas-select-count">{selectedCourses.size} of {courses.length} selected</p>
             <div className="canvas-modal-actions">
@@ -294,6 +445,7 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
         {step === "assignments" && (
           <AssignmentReview
             items={items}
+            fromFeed={method === "feed"}
             now={now}
             onChange={(id, changes) => setItems((current) => current.map((item) => (item.id === id ? { ...item, ...changes } : item)))}
             onSetAll={(include) => setItems((current) => current.map((item) => ({ ...item, include: include && Boolean(item.dueDate || item.manualDueDate) })))}
@@ -308,7 +460,7 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
             <p suppressHydrationWarning>
               {summary ||
                 (connection
-                  ? `Signed in as ${connection.displayName}${connection.lastSynced ? ` · last synced ${relativeTime(connection.lastSynced, now)}` : ""}. ${plural(existingTasks.length, "Canvas assignment")} in your plan.`
+                  ? `${connection.method === "feed" ? "Connected through your calendar feed" : `Signed in as ${connection.displayName}`}${connection.lastSynced ? ` · last synced ${relativeTime(connection.lastSynced, now)}` : ""}. ${plural(existingTasks.length, "Canvas assignment")} in your plan.`
                   : "")}
             </p>
             <div className="canvas-modal-actions">
@@ -319,7 +471,7 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
               )}
               {confirmDisconnect ? (
                 <div className="confirm-row" role="group" aria-label="Confirm disconnect">
-                  <span>Delete the saved token? Imported assignments stay in your plan.</span>
+                  <span>Delete the saved {connection?.method === "feed" ? "feed link" : "token"}? Imported assignments stay in your plan.</span>
                   <button className="danger-button" onClick={() => void disconnect()}>Disconnect</button>
                   <button className="quiet-action" onClick={() => setConfirmDisconnect(false)}>Keep</button>
                 </div>

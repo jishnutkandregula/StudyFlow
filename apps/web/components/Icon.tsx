@@ -1,6 +1,6 @@
 export type IconName =
   | "spark" | "calendar" | "canvas" | "arrow" | "plus" | "bolt" | "check" | "settings"
-  | "x" | "link" | "clock" | "alert" | "refresh" | "lock" | "unlock" | "undo";
+  | "x" | "link" | "clock" | "alert" | "refresh" | "lock" | "unlock" | "undo" | "paste";
 
 const paths: Record<IconName, React.ReactNode> = {
   spark: <path d="m12 2 1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Zm7 14 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z" />,
@@ -19,6 +19,7 @@ const paths: Record<IconName, React.ReactNode> = {
   lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
   unlock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 7.5-2" /></>,
   undo: <><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></>,
+  paste: <><rect x="6" y="4" width="12" height="17" rx="2" /><path d="M9 4V3h6v1M9 11h6M9 15h4" /></>,
 };
 
 export function Icon({ name }: { name: IconName }) {

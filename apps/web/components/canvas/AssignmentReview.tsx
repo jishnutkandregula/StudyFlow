@@ -23,6 +23,8 @@ export type ReviewItem = {
 
 type Props = {
   items: ReviewItem[];
+  /** Imported from the calendar feed, which has no point values to start estimates from. */
+  fromFeed?: boolean;
   now: Date | null;
   onChange: (id: string, changes: Partial<ReviewItem>) => void;
   onSetAll: (include: boolean) => void;
@@ -91,7 +93,7 @@ function Row({ item, now, onChange }: { item: ReviewItem; now: Date | null; onCh
   );
 }
 
-export function AssignmentReview({ items, now, onChange, onSetAll, onConfirm }: Props) {
+export function AssignmentReview({ items, fromFeed = false, now, onChange, onSetAll, onConfirm }: Props) {
   const dated = items.filter((item) => item.dueDate);
   const undated = items.filter((item) => !item.dueDate);
   const selected = items.filter((item) => item.include && isSchedulable(item));
@@ -104,8 +106,10 @@ export function AssignmentReview({ items, now, onChange, onSetAll, onConfirm }: 
     <div className="canvas-step review-step">
       <h2>Review assignments</h2>
       <p>
-        Choose what goes into your plan. Estimates start from point values — adjust them to match how long the work
-        really takes you.
+        Choose what goes into your plan.{" "}
+        {fromFeed
+          ? "Each estimate starts at a typical length. Set it to how long the work really takes you."
+          : "Estimates start from point values. Adjust them to match how long the work really takes you."}
       </p>
 
       {!items.length ? (

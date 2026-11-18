@@ -92,6 +92,8 @@ export type Preferences = {
 export type CanvasConnection = {
   displayName: string;
   canvasUrl: string;
+  /** "feed": the private Calendar Feed link (no token); "token": a personal access token. */
+  method: "token" | "feed";
   /** Null when connected but not yet synced. */
   lastSynced: Date | null;
 };

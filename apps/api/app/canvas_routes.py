@@ -27,11 +27,13 @@ from app.canvas_client import (
     fetch_courses,
     validate_connection,
 )
+from app.canvas_feed import feed_base_url, fetch_feed, parse_feed, validate_feed_url
 from app.canvas_models import (
     CanvasConnectRequest,
     CanvasConnectResponse,
     CanvasError,
     CanvasErrorCode,
+    CanvasFeedConnectRequest,
     CanvasSyncRequest,
     CanvasSyncResponse,
 )
@@ -39,6 +41,10 @@ from app.ratelimit import rate_limit
 from app.session import require_session
 
 logger = logging.getLogger(__name__)
+
+# Stored credentials carry their kind: a feed link is saved as "feed:<url>", a token as-is.
+# Both are encrypted the same way, so no schema change was needed to support feeds.
+FEED_PREFIX = "feed:"
 router = APIRouter(prefix="/api/v1/canvas", tags=["canvas"])
 
 _ERROR_STATUS: dict[CanvasErrorCode, int] = {
@@ -97,6 +103,40 @@ async def connect_canvas(
     return CanvasConnectResponse(display_name=display_name, canvas_url=canvas_url, courses=courses)
 
 
+@router.post(
+    "/connect-feed",
+    response_model=CanvasConnectResponse,
+    summary="Connect Canvas with the student's calendar feed link (no token needed)",
+    description=(
+        "For schools that block personal access tokens. Validates and reads the private "
+        "Calendar Feed link, stores it encrypted against this browser session, and returns "
+        "the courses that have upcoming assignments. The link is never echoed back."
+    ),
+)
+async def connect_canvas_feed(
+    request: CanvasFeedConnectRequest,
+    record: storage.SessionRecord = Depends(require_session),
+    _: None = Depends(rate_limit("canvas-connect", limit=5, window_seconds=600)),
+) -> CanvasConnectResponse | JSONResponse:
+    try:
+        feed_url = validate_feed_url(request.feed_url)
+        parsed = parse_feed(await fetch_feed(feed_url))
+    except CanvasError as error:
+        logger.info("Canvas feed connect failed: %s", error.code.value)
+        return _canvas_error_response(error)
+    except Exception:
+        logger.exception("Unexpected error during Canvas feed connect")
+        return _unexpected()
+    display_name = parsed.calendar_name or "your Canvas calendar"
+    canvas_url = feed_base_url(feed_url)
+    storage.save_canvas_connection(
+        record.id_hash, canvas_url, display_name, crypto.encrypt(FEED_PREFIX + feed_url)
+    )
+    return CanvasConnectResponse(
+        display_name=display_name, canvas_url=canvas_url, courses=parsed.courses, method="feed"
+    )
+
+
 @router.get(
     "/courses",
     response_model=CanvasConnectResponse,
@@ -107,8 +147,16 @@ async def list_courses(
     _: None = Depends(rate_limit("canvas-courses", limit=20, window_seconds=600)),
 ) -> CanvasConnectResponse | JSONResponse:
     try:
-        token = _stored_token(record)
-        courses = await fetch_courses(record.canvas_url or "", token)
+        credential = _stored_token(record)
+        if credential.startswith(FEED_PREFIX):
+            parsed = parse_feed(await fetch_feed(credential[len(FEED_PREFIX) :]))
+            return CanvasConnectResponse(
+                display_name=record.canvas_display_name or "",
+                canvas_url=record.canvas_url or "",
+                courses=parsed.courses,
+                method="feed",
+            )
+        courses = await fetch_courses(record.canvas_url or "", credential)
     except CanvasError as error:
         return _handle_stored_token_error(record, error, "courses")
     except Exception:
@@ -139,6 +187,14 @@ async def sync_canvas(
     try:
         token = _stored_token(record)
         canvas_url = record.canvas_url or ""
+        if token.startswith(FEED_PREFIX):
+            parsed = parse_feed(await fetch_feed(token[len(FEED_PREFIX) :]))
+            wanted = set(request.course_ids or [course.id for course in parsed.courses])
+            picked = [item for item in parsed.assignments if item.course_id in wanted]
+            storage.mark_canvas_synced(record.id_hash)
+            return CanvasSyncResponse(
+                assignments=picked, courses_scanned=len(wanted), assignments_found=len(picked)
+            )
         assignments = await fetch_assignments(canvas_url, token, request.course_ids)
         courses_scanned = len(request.course_ids) if request.course_ids else None
         if courses_scanned is None:
@@ -165,7 +221,7 @@ def _stored_token(record: storage.SessionRecord) -> str:
     if not record.canvas_connected:
         raise CanvasError(
             code=CanvasErrorCode.NOT_CONNECTED,
-            message="Canvas isn't connected. Connect it with a personal access token first.",
+            message="Canvas isn't connected yet. Connect it first.",
         )
     try:
         return crypto.decrypt(record.canvas_token_enc or "")
@@ -186,7 +242,7 @@ def _handle_stored_token_error(
         storage.clear_canvas_connection(record.id_hash)
         error = CanvasError(
             code=CanvasErrorCode.UNAUTHORIZED,
-            message="Canvas no longer accepts your saved token (it may have expired or been "
-            "revoked). Generate a new one to reconnect.",
+            message="Canvas no longer accepts your saved connection (the token or feed link "
+            "may have been reset). Please reconnect to keep syncing.",
         )
     return _canvas_error_response(error)

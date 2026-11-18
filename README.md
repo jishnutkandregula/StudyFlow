@@ -128,10 +128,32 @@ permissions, gitignored) so saved Canvas connections survive API reloads.
 
 ## Canvas setup
 
-StudyFlow can import your active courses and upcoming assignments from Canvas LMS using a
-personal access token. Click **Canvas LMS** in the Connections section and follow the two steps.
+StudyFlow imports your upcoming assignments from Canvas LMS in one of two ways. Click
+**Connect Canvas** and follow the guided steps.
 
-### 1. Find your Canvas URL
+### Option A: Calendar feed (default, works at every school)
+
+Many schools block personal access tokens for students. Every Canvas user can still copy their
+private calendar feed, which lists each assignment's due date and course.
+
+1. Type your school's Canvas address (for example `canvas.ucsc.edu`) and click **Open**. StudyFlow
+   opens your Canvas calendar in a new tab.
+2. Click **Calendar Feed** at the bottom right of the calendar and copy the link. It looks like
+   `https://canvas.yourschool.edu/feeds/calendars/user_….ics`.
+3. Back in StudyFlow, click **Paste link** (or paste into the box). StudyFlow connects as soon as it
+   sees a feed link.
+
+The feed has no point values or submission status, so you set estimates during review and mark work
+done in StudyFlow. The link is private, so StudyFlow treats it like a password: it's validated
+(HTTPS, a public host, and the exact `/feeds/calendars/user_….ics` path), stored encrypted, never
+logged or returned to the browser, and deleted when you disconnect. If you reset the feed in
+Canvas, StudyFlow forgets the old link and asks you to reconnect.
+
+### Option B: Personal access token (adds points and submission status)
+
+If your school allows tokens, choose **Connect with a token** in the Canvas window.
+
+#### 1. Find your Canvas URL
 
 Use the address you see in the browser when you're logged in to Canvas — for example
 `canvas.ucsc.edu` or `https://yourschool.instructure.com`.
@@ -140,7 +162,7 @@ Use the address you see in the browser when you're logged in to Canvas — for e
 - Any path (such as `/courses/123`) is ignored; only the host is used.
 - `localhost`, IP addresses, and hostnames without a domain are rejected.
 
-### 2. Generate a personal access token
+#### 2. Generate a personal access token
 
 1. In Canvas, open **Account → Settings** (left-hand global navigation).
 2. Scroll to **Approved Integrations** and click **+ New Access Token**.
@@ -148,16 +170,16 @@ Use the address you see in the browser when you're logged in to Canvas — for e
 4. Click **Generate Token** and copy it immediately — Canvas shows it only once.
 5. Paste it into the StudyFlow token field.
 
-If the **New Access Token** button is missing, your school has disabled personal tokens; ask your
-Canvas administrator or use Google Calendar instead.
+If the **New Access Token** button is greyed out or missing, your school has disabled personal
+tokens. Use the calendar feed (Option A) instead.
 
-### 3. Review before importing
+### Review before importing
 
 After choosing courses, StudyFlow lists every upcoming assignment with its due date, points, and a
 starting time estimate based on points. Untick anything you don't want planned, adjust estimates, and
 pick dates for assignments Canvas has no due date for. Syncing again keeps the estimates you set.
 
-### Permissions
+### Token permissions
 
 A personal access token acts as your Canvas user, so it can see whatever your student account
 can see. StudyFlow only makes read-only `GET` requests:

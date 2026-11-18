@@ -263,3 +263,33 @@ button.task-time:hover{border-color:rgba(255,255,255,.18);color:#fff}
 .rail-links a:hover{color:#cfc9e3;text-decoration:underline}
 .data-controls p a{color:#bcaaff}
 @media(max-width:1080px){.rail-links{display:none}}
+
+/* Canvas: one-paste calendar feed */
+.feed-steps{counter-reset:none;display:grid;gap:14px;list-style:none;margin:0 0 16px;padding:0}
+.feed-steps>li{background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);border-radius:12px;display:grid;gap:10px;padding:14px}
+.feed-steps small{color:#8d8a9b;font-size:11px;line-height:1.5}
+.feed-steps small b{color:#e4ddff;font-weight:600}
+.feed-step-head{align-items:center;display:flex;gap:10px}
+.feed-step-head strong{font-size:13px;letter-spacing:-.01em}
+.feed-step-num{align-items:center;background:linear-gradient(135deg,#8f73ff,#5b43d6);border-radius:50%;color:#fff;display:inline-flex;font-size:11px;font-weight:700;height:22px;justify-content:center;width:22px}
+.feed-school-row,.feed-paste-row{display:flex;gap:8px}
+.feed-school-row input,.feed-paste-row input{background:rgba(5,6,11,.55);border:1px solid rgba(255,255,255,.13);border-radius:8px;color:#fff;flex:1;font-size:13px;min-width:0;outline-color:#9d85f7;padding:10px 12px}
+.feed-paste-row .glow-button{flex:0 0 auto;white-space:nowrap}
+.feed-open{align-items:center;background:rgba(157,133,247,.14);border:1px solid rgba(157,133,247,.35);border-radius:8px;color:#d9cfff;display:inline-flex;font-size:12px;font-weight:600;gap:6px;padding:0 14px;text-decoration:none;transition:background .15s,transform .15s}
+.feed-open:hover{background:rgba(157,133,247,.24);transform:translateY(-1px)}
+.feed-open.disabled{opacity:.4;pointer-events:none}
+.feed-open svg,.feed-paste-row svg{height:14px;width:14px}
+.feed-hint{color:#f0b46b!important}
+.feed-diagram{background:rgba(5,6,11,.45);border:1px solid rgba(255,255,255,.07);border-radius:9px;display:grid;gap:10px;grid-template-columns:1fr 92px;padding:10px}
+.feed-diagram-cal{display:grid;gap:4px;grid-template-columns:repeat(7,1fr)}
+.feed-diagram-cal span{background:rgba(255,255,255,.06);border-radius:3px;height:16px}
+.feed-diagram-cal span.dot{background:rgba(157,133,247,.45)}
+.feed-diagram-side{align-content:end;display:grid;gap:5px}
+.feed-diagram-side span{background:rgba(255,255,255,.06);border-radius:3px;height:6px}
+.feed-diagram-side b{animation:feed-pulse 2.2s ease-in-out infinite;border:1px solid #9d85f7;border-radius:5px;color:#d9cfff;font-size:9px;font-weight:600;padding:3px 5px;text-align:center}
+@keyframes feed-pulse{0%,100%{box-shadow:0 0 0 0 rgba(157,133,247,.45)}50%{box-shadow:0 0 0 5px rgba(157,133,247,0)}}
+@media (prefers-reduced-motion:reduce){.feed-diagram-side b{animation:none}}
+.feed-alt{background:none;border:0;color:#8d8a9b;cursor:pointer;font:inherit;font-size:11px;padding:4px 0;text-align:left}
+.feed-alt u{color:#c3b5ff;text-underline-offset:2px}
+.feed-alt:hover u{color:#e4ddff}
+@media (max-width:480px){.feed-paste-row{flex-direction:column}.feed-diagram{grid-template-columns:1fr 70px}}
