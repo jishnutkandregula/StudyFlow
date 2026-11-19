@@ -28,7 +28,7 @@ export const viewport: Viewport = {
 
 // Runs before the first paint so the page never flashes the wrong theme.
 // A saved choice wins; otherwise the page follows the system setting, live.
-const themeScript = `(function(){try{var d=document.documentElement,m=window.matchMedia("(prefers-color-scheme: light)");function a(){var s=null;try{s=localStorage.getItem("sf-theme")}catch(e){}d.dataset.theme=s==="light"||s==="dark"?s:(m.matches?"light":"dark")}a();m.addEventListener("change",a)}catch(e){}})()`;
+const themeScript = `(function(){try{var d=document.documentElement;d.classList.add("js");var m=window.matchMedia("(prefers-color-scheme: light)");function a(){var s=null;try{s=localStorage.getItem("sf-theme")}catch(e){}d.dataset.theme=s==="light"||s==="dark"?s:(m.matches?"light":"dark")}a();m.addEventListener("change",a)}catch(e){}})()`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // Browser extensions such as Grammarly can add attributes to <body> before React

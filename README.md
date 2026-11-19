@@ -61,9 +61,9 @@ Student-approved calendar updates
 
 Working MVP. A student can:
 
-1. Connect **Canvas** with a personal access token, choose courses, and review every upcoming
-   assignment (include or exclude it, adjust estimates, date the undated ones) before it reaches
-   the plan.
+1. Connect **Canvas** by pasting its calendar feed link (or a personal access token), choose
+   courses, and review every upcoming assignment (include or exclude it, adjust estimates, date the
+   undated ones) before it reaches the plan. Each estimate says why it was chosen.
 2. Connect **Google Calendar** read-only, so classes, shifts, and meetings become protected
    busy time.
 3. Set availability, sleep, meals, recurring commitments, focus length, and a daily cap.
@@ -72,8 +72,10 @@ Working MVP. A student can:
 5. Replan as life happens: mark a session done, add 30 minutes, lock a session in place, or take
    today off. Every change shows what moved, and every change can be undone.
 6. Come back later: the workspace autosaves, and Canvas re-syncs in one click.
+7. Use it in light or dark mode. The landing page at `/` shows the planner working on a sample
+   week; the app itself lives at `/app` (`/app?sample=1` opens it with the sample week loaded).
 
-Next: accounts across devices, deployment, and optional study blocks written to Google Calendar.
+Next: first-run onboarding, accounts across devices, and optional study blocks written to Google Calendar.
 See the [product vision](docs/PRODUCT_VISION.md) for the full gap analysis.
 
 ## Run locally
@@ -97,7 +99,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. Next.js proxies `/api/*` to the API at `http://127.0.0.1:8000`
+Open `http://localhost:3000` for the landing page, or `http://localhost:3000/app` for the planner. Next.js proxies `/api/*` to the API at `http://127.0.0.1:8000`
 (override with `STUDYFLOW_API_ORIGIN`), so the browser only ever talks to one origin.
 
 ### API configuration

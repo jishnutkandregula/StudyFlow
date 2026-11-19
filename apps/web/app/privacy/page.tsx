@@ -48,7 +48,7 @@ export default function PrivacyPage() {
     <main className="doc-shell">
       <div className="ambient ambient-one" />
       <article className="doc">
-        <Link href="/" className="doc-back">&#8592; Back to StudyFlow</Link>
+        <Link href="/app" className="doc-back">&#8592; Back to StudyFlow</Link>
         <p className="kicker">PRIVACY</p>
         <h1>Your data, plainly.</h1>
         <p className="doc-lede">
