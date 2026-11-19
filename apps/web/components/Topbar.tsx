@@ -16,7 +16,10 @@ export function Topbar({ now, loading, hasTasks, hasPlan, stale, onGenerate }: P
     <header className="topbar">
       <div>
         <p className="kicker" suppressHydrationWarning>{now ? formatLongDate(now) : " "}</p>
-        <h1>Make room for <em>what matters.</em></h1>
+        <h1>
+          <span className="headline-line"><span>Make room for</span></span>{" "}
+          <span className="headline-line"><span><em>what matters.</em></span></span>
+        </h1>
       </div>
       <button
         className={`glow-button${stale ? " pulse" : ""}`}

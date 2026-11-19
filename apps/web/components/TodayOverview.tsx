@@ -1,6 +1,7 @@
 import { dayLabel, formatClock, formatDue, formatHours, plural, toDateKey } from "../lib/format";
 import { healthLabel } from "../lib/health";
 import type { Plan, Session, Task } from "../lib/types";
+import { CountUp } from "./CountUp";
 import { Icon } from "./Icon";
 
 type Props = {
@@ -98,7 +99,7 @@ export function TodayOverview({ now, tasks, plan, loading, courseColor, onGenera
           {plan && <span className={`health-badge ${plan.health}`}>{healthLabel[plan.health]}</span>}
         </div>
         <div className="pulse-number">
-          {coverage ?? "—"}
+          {coverage === null ? "—" : <CountUp value={coverage} />}
           {coverage !== null && <small>%</small>}
         </div>
         <p>

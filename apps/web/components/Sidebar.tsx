@@ -1,6 +1,7 @@
 import { initials, relativeTime } from "../lib/format";
 import type { SaveStatus } from "../lib/types";
 import { Icon } from "./Icon";
+import { ThemeToggle } from "./ThemeToggle";
 
 const links = [
   { href: "#today", icon: "bolt", label: "Today" },
@@ -29,6 +30,7 @@ export function Sidebar({ studentName, saveStatus, now }: Props) {
     <aside className="rail">
       <div className="logo">
         <span><Icon name="spark" /></span>StudyFlow
+        <ThemeToggle />
       </div>
       <div className="rail-label">YOUR SPACE</div>
       <nav aria-label="Sections">
