@@ -12,7 +12,8 @@ const sections = [
     items: [
       "Your coursework (titles, courses, due dates, estimates), planning preferences, and your current plan, so they survive a reload.",
       "When you’re busy according to Google Calendar: dates and times only. Event titles, descriptions, attendees, and locations are never saved; titles never leave your browser.",
-      "If you connect Canvas: your school’s Canvas address, your Canvas display name, and your personal access token, encrypted at rest.",
+      "If you connect Canvas: your school’s Canvas address, a display name, and either your calendar feed link or your personal access token, encrypted at rest. Class meeting times from Canvas are kept as busy time, without their titles.",
+      "To learn your pace: for each task you finish, StudyFlow’s first estimate and the focus time you logged, with the course and kind of work (for example “lab”). Assignment instructions are read to estimate time, then discarded rather than stored.",
     ],
   },
   {

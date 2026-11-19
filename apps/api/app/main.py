@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app import storage
 from app.canvas_routes import router as canvas_router
+from app.estimates_routes import router as estimates_router
 from app.planner import PlanningRequest, PlanningResponse, generate_plan
 from app.settings import get_settings
 from app.workspace import router as workspace_router
@@ -51,6 +52,7 @@ app.add_middleware(
 
 app.include_router(canvas_router)
 app.include_router(workspace_router)
+app.include_router(estimates_router)
 
 
 @app.get("/health", tags=["system"])

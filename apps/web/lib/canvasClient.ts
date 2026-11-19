@@ -19,7 +19,12 @@ export type CanvasAssignment = {
   due_at: string | null;
   points_possible?: number;
   html_url?: string;
+  /** Plain-text instructions, read by the estimator. */
+  description?: string | null;
 };
+
+/** A timed Canvas event (class meeting); ISO times, UTC when known. */
+export type CanvasBusyEvent = { start: string; end: string };
 
 export type CanvasConnectResult = {
   display_name: string;
@@ -32,6 +37,7 @@ export type CanvasSyncResult = {
   assignments: CanvasAssignment[];
   courses_scanned: number;
   assignments_found: number;
+  busy?: CanvasBusyEvent[];
 };
 
 /** Verify a Canvas URL + token; the API stores the token and returns courses. */

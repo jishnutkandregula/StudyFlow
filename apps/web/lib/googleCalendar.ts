@@ -7,6 +7,29 @@ export type ImportedCalendarEvent = {
   end?: { dateTime?: string; date?: string };
 };
 
+type RawEvent = {
+  id: string;
+  summary?: string;
+  status?: string;
+  transparency?: string;
+  eventType?: string;
+  attendees?: Array<{ self?: boolean; responseStatus?: string }>;
+  start?: ImportedCalendarEvent["start"];
+  end?: ImportedCalendarEvent["end"];
+};
+
+/**
+ * Whether an event actually takes the student's time. Events marked "Free", invitations
+ * they declined, cancelled events, and working-location markers ("Home", "Office") don't.
+ */
+export function blocksTime(event: RawEvent): boolean {
+  if (event.status === "cancelled") return false;
+  if (event.transparency === "transparent") return false;
+  if (event.eventType === "workingLocation") return false;
+  if (event.attendees?.some((attendee) => attendee.self && attendee.responseStatus === "declined")) return false;
+  return Boolean(event.start?.dateTime && event.end?.dateTime);
+}
+
 type TokenResponse = { access_token?: string; error?: string };
 type TokenClient = { requestAccessToken: (options?: { prompt?: string }) => void };
 
@@ -82,7 +105,7 @@ export async function importCalendarEvents(accessToken: string): Promise<Calenda
     const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendar.id)}/events?${query}`, { headers });
     if (!response.ok) return [] as ImportedCalendarEvent[];
     const payload = await response.json();
-    return (payload.items as Array<{ id: string; summary?: string; start?: ImportedCalendarEvent["start"]; end?: ImportedCalendarEvent["end"] }>).map((event) => ({
+    return (payload.items as RawEvent[]).filter(blocksTime).map((event) => ({
       id: event.id,
       calendarId: calendar.id,
       calendarName: calendar.summary,

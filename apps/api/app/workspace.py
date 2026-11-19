@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app import crypto, storage
+from app.estimator import EstimateSample
 from app.planner import BusyTimeBlock, LockedSession
 from app.ratelimit import client_ip, limiter, rate_limit
 from app.session import COOKIE_NAME, clear_cookie, get_or_create_session, require_session
@@ -34,6 +35,12 @@ class WorkspaceTask(BaseModel):
     source: Literal["manual", "canvas", "sample"] = "manual"
     points: Optional[float] = None  # noqa: UP045
     url: Optional[str] = Field(default=None, max_length=1000)  # noqa: UP045
+    # Estimation and learning: what kind of work this is, what StudyFlow first estimated
+    # (before the student or "more time" changed it), why, and how much time was logged.
+    category: Optional[str] = Field(default=None, max_length=32)  # noqa: UP045
+    estimate_reason: Optional[str] = Field(default=None, max_length=300)  # noqa: UP045
+    original_estimate: Optional[int] = Field(default=None, gt=0, le=10_080)  # noqa: UP045
+    logged_minutes: int = Field(default=0, ge=0, le=100_000)
 
 
 class CompletedTask(BaseModel):
@@ -59,6 +66,8 @@ class Workspace(BaseModel):
     locked_sessions: list[LockedSession] = Field(default_factory=list, max_length=200)
     blocked_dates: list[date] = Field(default_factory=list, max_length=60)
     calendar: Optional[CalendarMeta] = None  # noqa: UP045
+    # Finished tasks (first estimate vs. logged time) that calibrate future estimates.
+    estimate_history: list[EstimateSample] = Field(default_factory=list, max_length=300)
     # The last generated plan, kept so a reload shows the same plan instead of a new one.
     plan: Optional[dict[str, Any]] = None  # noqa: UP045
     plan_key: str = Field(default="", max_length=200_000)

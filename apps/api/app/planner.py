@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -91,6 +91,8 @@ class BusyTimeBlock(BaseModel):
     start_time: time
     end_time: time
     label: str = Field(default="Calendar event", min_length=1, max_length=160)
+    # Where it came from, so re-syncing one source replaces only its own blocks.
+    source: Literal["google", "canvas"] = "google"
 
     @model_validator(mode="after")
     def ends_after_start(self) -> BusyTimeBlock:

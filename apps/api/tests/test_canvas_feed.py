@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -123,7 +123,8 @@ def test_parse_handles_utc_tzid_and_all_day_times() -> None:
 
 def test_parse_without_course_link_groups_by_bracket_label() -> None:
     text = FEED.replace(
-        "URL:https://canvas.example.edu/courses/88/assignments/503", "URL:https://canvas.example.edu/"
+        "URL:https://canvas.example.edu/courses/88/assignments/503",
+        "URL:https://canvas.example.edu/",
     )
     stat = next(item for item in parse_feed(text, now=NOW).assignments if item.id == "503")
     assert stat.course_id.startswith("feed-")
@@ -234,3 +235,66 @@ def test_reset_feed_link_clears_the_connection(session_client) -> None:
         response = session_client.post("/api/v1/canvas/sync", json={})
     assert response.status_code == 401
     assert session_client.get("/api/v1/workspace").json()["canvas"] is None
+
+
+# ---------------------------------------------------------------------------
+# Descriptions and class meetings
+# ---------------------------------------------------------------------------
+
+_EXTRA = "\r\n".join(
+    [
+        "BEGIN:VEVENT",
+        "UID:event-assignment-504",
+        "DTSTART:20261121T075900Z",
+        "SUMMARY:Essay 3 [WRIT 2]",
+        "DESCRIPTION:Write a 1\\,500-word essay on a primary source.\\nCite three",
+        "  sources.",
+        "URL:https://canvas.example.edu/courses/77/assignments/504",
+        "END:VEVENT",
+        "BEGIN:VEVENT",
+        "UID:event-calendar-event-9100",
+        "DTSTART:20261118T170000Z",
+        "DTEND:20261118T183000Z",
+        "SUMMARY:Lecture [CSE 101-01 Fall 2026]",
+        "END:VEVENT",
+        "BEGIN:VEVENT",
+        "UID:event-calendar-event-9101",
+        "DTSTART;VALUE=DATE:20261126",
+        "DTEND;VALUE=DATE:20261127",
+        "SUMMARY:Thanksgiving (no class)",
+        "END:VEVENT",
+        "BEGIN:VEVENT",
+        "UID:event-calendar-event-9102",
+        "DTSTART:20261110T170000Z",
+        "DTEND:20261110T183000Z",
+        "SUMMARY:Past lecture",
+        "END:VEVENT",
+    ]
+)
+FEED_WITH_DETAILS = FEED.replace("END:VCALENDAR", _EXTRA + "\r\nEND:VCALENDAR")
+
+
+def test_assignment_descriptions_are_read_for_estimates() -> None:
+    by_id = {a.id: a for a in parse_feed(FEED_WITH_DETAILS, now=NOW).assignments}
+    assert (
+        by_id["504"].description
+        == "Write a 1,500-word essay on a primary source. Cite three sources."
+    )
+    assert by_id["501"].description is None
+
+
+def test_timed_class_meetings_become_busy_time_without_titles() -> None:
+    busy = parse_feed(FEED_WITH_DETAILS, now=NOW).busy
+    # Only the upcoming, timed lecture: not the all-day holiday, the past lecture, or the
+    # lecture with no end time.
+    assert [(b.start, b.end) for b in busy] == [("2026-11-18T17:00:00Z", "2026-11-18T18:30:00Z")]
+    assert "Lecture" not in json.dumps([b.model_dump() for b in busy])
+
+
+def test_feed_sync_returns_busy_time(session_client) -> None:
+    _connect_feed(session_client)
+    with patch("app.canvas_routes.fetch_feed", new_callable=AsyncMock) as mock_fetch:
+        soon = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y%m%d")
+        mock_fetch.return_value = FEED_WITH_DETAILS.replace("20261118T", f"{soon}T")
+        synced = session_client.post("/api/v1/canvas/sync", json={}).json()
+    assert len(synced["busy"]) >= 1

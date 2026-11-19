@@ -19,6 +19,15 @@ export type ReviewItem = {
   alreadyInPlan: boolean;
   /** Marked done in StudyFlow earlier; left out by default on a re-sync. */
   finished: boolean;
+  /** Plain-text instructions from Canvas, read by the estimator. */
+  description: string | null;
+  /** From the estimator: kind of work, why this estimate, how sure, and the uncalibrated baseline. */
+  category: string | null;
+  reason: string | null;
+  confidence: "high" | "medium" | "low" | null;
+  baseEstimate: number | null;
+  /** The estimate StudyFlow suggested, to tell whether the student changed it. */
+  suggested: number | null;
 };
 
 type Props = {
@@ -55,6 +64,13 @@ function Row({ item, now, onChange }: { item: ReviewItem; now: Date | null; onCh
           {item.alreadyInPlan && <span className="source-badge">In plan</span>}
           {item.finished && <span className="source-badge finished">Finished</span>}
         </small>
+        {item.reason && (
+          <span className={`estimate-reason ${item.confidence ?? ""}`} title="How StudyFlow estimated this. Change the minutes anytime.">
+            <Icon name="spark" />
+            {item.reason}
+            {item.suggested != null && Number(item.estimate) !== item.suggested && " · you changed it"}
+          </span>
+        )}
         {undated && (
           <label className="review-date">
             <span>Plan it for</span>
@@ -108,8 +124,8 @@ export function AssignmentReview({ items, fromFeed = false, now, onChange, onSet
       <p>
         Choose what goes into your plan.{" "}
         {fromFeed
-          ? "Each estimate starts at a typical length. Set it to how long the work really takes you."
-          : "Estimates start from point values. Adjust them to match how long the work really takes you."}
+          ? "StudyFlow estimated each one from its instructions. Change any number to match how long the work really takes you."
+          : "StudyFlow estimated each one from its instructions and points. Change any number to match how long the work really takes you."}
       </p>
 
       {!items.length ? (

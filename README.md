@@ -175,8 +175,8 @@ tokens. Use the calendar feed (Option A) instead.
 
 ### Review before importing
 
-After choosing courses, StudyFlow lists every upcoming assignment with its due date, points, and a
-starting time estimate based on points. Untick anything you don't want planned, adjust estimates, and
+After choosing courses, StudyFlow lists every upcoming assignment with its due date, points (token
+connections), and a time estimate with the reason behind it (see [How estimates work](#how-estimates-work)). Untick anything you don't want planned, adjust estimates, and
 pick dates for assignments Canvas has no due date for. Syncing again keeps the estimates you set.
 
 ### Token permissions
@@ -196,6 +196,35 @@ enforces scoped developer keys, the token needs read access to the three endpoin
 The token is sent to the StudyFlow API once, stored encrypted so later syncs need no token, and
 never logged or sent back to the browser. **Disconnect Canvas** deletes it immediately, and you
 can also revoke it in Canvas under **Account → Settings → Approved Integrations**.
+
+## How estimates work
+
+Every assignment gets an estimate and a one-line reason, such as *"Writing assignment · ~1,500 words"*
+or *"Lab · typical lab · −24% for your pace on CSE 101 labs (1 finished)"*. The estimator
+([`apps/api/app/estimator.py`](apps/api/app/estimator.py)) is deterministic and has two stages:
+
+1. **Rules read the assignment.** The title (then the Canvas description) decides the kind of work:
+   essay, problem set, reading, lab, quiz, exam prep, project, presentation, discussion post. The
+   amount stated beats the kind: word counts ("1,200–1,500 words", "a 1,500-word essay"), pages of
+   writing vs. pages of reading, problem ranges ("problems 1–12"), chapters, slides, and quiz time
+   limits. With nothing stated, the kind's typical length is used, gently scaled by points.
+2. **Calibration learns your pace.** Finishing a task records StudyFlow's first estimate and the
+   focus time you logged ("Done" on sessions, "+30", or "Finished it" early). Future estimates are
+   multiplied by your actual-to-estimated ratio, averaged in log space and shrunk toward "no change"
+   across three levels: this kind of work in this course, this kind of work anywhere, and all work.
+   Each finished task counts once, at its most specific level, so one odd week can't swing everything.
+
+You can always change an estimate; the reason shows that you did.
+
+## Calendars working together
+
+Study sessions never land on time that's already taken:
+
+- **Google Calendar:** timed events, except ones marked *Free*, invitations you declined, and
+  working-location markers. Events that cross midnight are split across both days.
+- **Canvas:** with the calendar feed, class meetings and other timed Canvas events become busy time.
+- The same event arriving from both sources is counted once, and re-syncing one source replaces
+  only that source's busy time.
 
 ## Development checks
 

@@ -293,3 +293,16 @@ button.task-time:hover{border-color:rgba(255,255,255,.18);color:#fff}
 .feed-alt u{color:#c3b5ff;text-underline-offset:2px}
 .feed-alt:hover u{color:#e4ddff}
 @media (max-width:480px){.feed-paste-row{flex-direction:column}.feed-diagram{grid-template-columns:1fr 70px}}
+
+/* Estimates: the reason behind each number */
+.estimate-reason{align-items:center;color:#a99cdf;display:inline-flex;font-size:10.5px;gap:5px;line-height:1.35;margin-top:4px}
+.estimate-reason svg{color:#b9a6ff;flex:0 0 auto;height:11px;width:11px}
+.estimate-reason.low{color:#8d8a9b}
+.estimate-reason.low svg{color:#8d8a9b}
+.capture-form .estimate-reason{margin-top:0}
+.task-row .logged{color:#7fd9b4}
+.row-finish{align-items:center;background:transparent;border:1px solid rgba(125,240,189,.25);border-radius:6px;color:#7fd9b4;display:flex;flex:0 0 auto;height:24px;justify-content:center;opacity:0;padding:0;transition:.15s;width:24px}
+.row-finish svg{height:13px;width:13px}
+.task-row:hover .row-finish,.row-finish:focus-visible{opacity:1}
+.row-finish:hover{background:rgba(125,240,189,.12)}
+@media (hover:none){.row-finish,.row-remove{opacity:1}}

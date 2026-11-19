@@ -36,6 +36,7 @@ from app.canvas_models import (
     CanvasError,
     CanvasErrorCode,
 )
+from app.estimator import plain_text
 
 # Canvas sends up to 100 items per page by default; we cap pagination at this
 # many pages to avoid runaway fetches against a misconfigured instance.
@@ -314,7 +315,7 @@ async def fetch_assignments(
                         due_at=item.get("due_at"),
                         points_possible=item.get("points_possible"),
                         html_url=item.get("html_url"),
-                        description=None,  # omitted for performance; fetch separately on demand
+                        description=plain_text(item.get("description"))[:4000] or None,
                     )
                 )
     return assignments

@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { type Estimate, requestEstimates } from "../lib/estimatesApi";
 import { formatDue, formatHours, hoursUntilDue } from "../lib/format";
 import type { Task } from "../lib/types";
 import { Icon } from "./Icon";
@@ -13,6 +14,8 @@ type Props = {
   onToggleCapture: () => void;
   onAdd: (task: Task) => void;
   onRemove: (id: string) => void;
+  /** Finished before the plan expected: frees remaining time and teaches StudyFlow the pace. */
+  onFinish: (id: string) => void;
   onEstimateChange: (id: string, minutes: number) => void;
   completed: Array<{ id: string; title: string; course: string }>;
 };
@@ -68,9 +71,31 @@ function compareDeadline(a: Task, b: Task) {
   return `${a.due_date}T${a.due_time ?? "23:59:59"}`.localeCompare(`${b.due_date}T${b.due_time ?? "23:59:59"}`);
 }
 
-export function WorkloadPanel({ now, tasks, courseColor, showCapture, onToggleCapture, onAdd, onRemove, onEstimateChange, completed }: Props) {
+export function WorkloadPanel({ now, tasks, courseColor, showCapture, onToggleCapture, onAdd, onRemove, onFinish, onEstimateChange, completed }: Props) {
   const [draft, setDraft] = useState(emptyDraft);
+  const [suggestion, setSuggestion] = useState<Estimate | null>(null);
+  // Once the student types minutes themselves, suggestions stop overwriting them.
+  const [minutesTouched, setMinutesTouched] = useState(false);
   const sorted = [...tasks].sort(compareDeadline);
+
+  // Suggest an estimate from the title as the student types it (debounced).
+  useEffect(() => {
+    const title = draft.title.trim();
+    if (!showCapture || title.length < 3) {
+      setSuggestion(null);
+      return;
+    }
+    const id = window.setTimeout(() => {
+      requestEstimates([{ id: "draft", title, course: draft.course.trim() }])
+        .then((estimates) => {
+          const estimate = estimates.get("draft") ?? null;
+          setSuggestion(estimate);
+          if (estimate && !minutesTouched) setDraft((current) => ({ ...current, estimated_minutes: String(estimate.minutes) }));
+        })
+        .catch(() => setSuggestion(null));
+    }, 450);
+    return () => window.clearTimeout(id);
+  }, [draft.title, draft.course, showCapture, minutesTouched]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -86,8 +111,14 @@ export function WorkloadPanel({ now, tasks, courseColor, showCapture, onToggleCa
       priority: 3,
       course_weight: 10,
       source: "manual",
+      category: suggestion?.category ?? null,
+      estimate_reason: suggestion && !minutesTouched ? suggestion.reason : null,
+      original_estimate: suggestion?.base_minutes ?? null,
+      logged_minutes: 0,
     });
     setDraft(emptyDraft);
+    setSuggestion(null);
+    setMinutesTouched(false);
   }
 
   return (
@@ -110,10 +141,18 @@ export function WorkloadPanel({ now, tasks, courseColor, showCapture, onToggleCa
             <input required type="date" value={draft.due_date} onChange={(e) => setDraft({ ...draft, due_date: e.target.value })} aria-label="Due date" />
             <input type="time" value={draft.due_time} onChange={(e) => setDraft({ ...draft, due_time: e.target.value })} aria-label="Due time (optional)" />
             <label className="minutes-field">
-              <input required min="15" max="1440" step="15" type="number" value={draft.estimated_minutes} onChange={(e) => setDraft({ ...draft, estimated_minutes: e.target.value })} aria-label="Estimated minutes" />
+              <input required min="15" max="1440" step="15" type="number" value={draft.estimated_minutes} onChange={(e) => { setMinutesTouched(true); setDraft({ ...draft, estimated_minutes: e.target.value }); }} aria-label="Estimated minutes" />
               <span>min</span>
             </label>
           </div>
+          {suggestion && (
+            <span className={`estimate-reason ${suggestion.confidence}`} role="status">
+              <Icon name="spark" />
+              {minutesTouched && Number(draft.estimated_minutes) !== suggestion.minutes
+                ? `StudyFlow suggests ${formatHours(suggestion.minutes)}: ${suggestion.reason}`
+                : suggestion.reason}
+            </span>
+          )}
           <button className="glow-button" type="submit">Add to workload</button>
         </form>
       )}
@@ -148,9 +187,19 @@ export function WorkloadPanel({ now, tasks, courseColor, showCapture, onToggleCa
                     {task.course} · <span className={urgent ? "due-soon" : undefined}>due {formatDue(task.due_date, task.due_time, now)}</span>
                     {task.source === "canvas" && <span className="source-badge">Canvas</span>}
                     {task.source === "sample" && <span className="source-badge sample">Sample</span>}
+                    {(task.logged_minutes ?? 0) > 0 && <span className="logged"> · {formatHours(task.logged_minutes!)} done</span>}
                   </small>
+                  {task.estimate_reason && (
+                    <span className="estimate-reason" title="How StudyFlow estimated this">
+                      <Icon name="spark" />
+                      {task.estimate_reason}
+                    </span>
+                  )}
                 </div>
                 <EstimateEditor key={task.estimated_minutes} task={task} onChange={(minutes) => onEstimateChange(task.id, minutes)} />
+                <button className="row-finish" onClick={() => onFinish(task.id)} title="Finished it" aria-label={`Mark ${task.title} finished`}>
+                  <Icon name="check" />
+                </button>
                 <button className="row-remove" onClick={() => onRemove(task.id)} aria-label={`Remove ${task.title}`}>
                   <Icon name="x" />
                 </button>

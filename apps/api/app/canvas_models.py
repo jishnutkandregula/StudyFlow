@@ -103,6 +103,14 @@ class CanvasCourse(BaseModel):
     term: Optional[str] = None  # noqa: UP045
 
 
+class CanvasBusyEvent(BaseModel):
+    """A timed Canvas calendar event (class meeting, section, office hours). No title is
+    kept: only when it happens matters for planning."""
+
+    start: str = Field(description="ISO-8601, UTC with Z when known, otherwise floating local.")
+    end: str
+
+
 class CanvasAssignment(BaseModel):
     """Assignment as returned from Canvas, before the student reviews or approves it."""
 
@@ -112,7 +120,8 @@ class CanvasAssignment(BaseModel):
     due_at: str | None = None  # ISO-8601 datetime string from Canvas, or None
     points_possible: Optional[float] = None  # noqa: UP045
     html_url: Optional[str] = None  # noqa: UP045
-    description: Optional[str] = None  # noqa: UP045 -- fetched separately on demand
+    # Plain-text instructions (truncated), read by the estimator. Never stored as-is.
+    description: Optional[str] = None  # noqa: UP045
 
 
 # ---------------------------------------------------------------------------
@@ -138,3 +147,6 @@ class CanvasSyncResponse(BaseModel):
     assignments: list[CanvasAssignment]
     courses_scanned: int
     assignments_found: int
+    busy: list[CanvasBusyEvent] = Field(
+        default_factory=list, description="Timed Canvas events (feed connections only)."
+    )

@@ -193,7 +193,10 @@ async def sync_canvas(
             picked = [item for item in parsed.assignments if item.course_id in wanted]
             storage.mark_canvas_synced(record.id_hash)
             return CanvasSyncResponse(
-                assignments=picked, courses_scanned=len(wanted), assignments_found=len(picked)
+                assignments=picked,
+                courses_scanned=len(wanted),
+                assignments_found=len(picked),
+                busy=parsed.busy,
             )
         assignments = await fetch_assignments(canvas_url, token, request.course_ids)
         courses_scanned = len(request.course_ids) if request.course_ids else None

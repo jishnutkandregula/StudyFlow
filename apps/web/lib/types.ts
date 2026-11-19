@@ -17,7 +17,18 @@ export type Task = {
   source: TaskSource;
   points?: number | null;
   url?: string | null;
+  /** Kind of work, from the estimator (essay, lab, problem_set, ...). */
+  category?: string | null;
+  /** Why StudyFlow suggested the estimate it did. */
+  estimate_reason?: string | null;
+  /** StudyFlow's first estimate, before any change; compared with logged time to learn. */
+  original_estimate?: number | null;
+  /** Focus time the student has logged on this task so far. */
+  logged_minutes?: number;
 };
+
+/** A finished task's first estimate vs. the time it really took; calibrates future estimates. */
+export type EstimateSample = { category: string; course: string; estimated_minutes: number; actual_minutes: number };
 
 export type Session = {
   task_id: string;
@@ -74,7 +85,8 @@ export type ProtectedBlock = {
   end_time: string;
 };
 
-export type BusyBlock = { date: string; start_time: string; end_time: string; label: string };
+export type BusySource = "google" | "canvas";
+export type BusyBlock = { date: string; start_time: string; end_time: string; label: string; source?: BusySource };
 
 /** Form-friendly preferences: numeric fields stay strings while the user edits them. */
 export type Preferences = {

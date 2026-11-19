@@ -5,6 +5,7 @@ import type {
   CanvasConnection,
   CompletedTask,
   DailyAvailability,
+  EstimateSample,
   LockedSession,
   Plan,
   Preferences,
@@ -25,6 +26,7 @@ export type WorkspaceState = {
   calendar: CalendarConnection | null;
   plan: Plan | null;
   planKey: string;
+  estimateHistory: EstimateSample[];
 };
 
 type WorkspaceDto = {
@@ -40,6 +42,7 @@ type WorkspaceDto = {
   calendar: { busy_events: number; calendars_scanned: number; last_synced: string } | null;
   plan: Plan | null;
   plan_key: string;
+  estimate_history?: EstimateSample[];
 };
 
 type LoadResponse = {
@@ -81,6 +84,7 @@ export async function loadWorkspace(): Promise<LoadedWorkspace> {
         : null,
       plan: ws.plan,
       planKey: ws.plan_key,
+      estimateHistory: ws.estimate_history ?? [],
     },
   };
 }
@@ -102,6 +106,8 @@ export async function saveWorkspace(state: WorkspaceState): Promise<Date> {
       : null,
     plan: state.plan,
     plan_key: state.planKey,
+    // Keep the most recent samples; old habits matter less than recent ones.
+    estimate_history: state.estimateHistory.slice(-300),
   };
   const result = await apiFetch<{ saved_at: string }>("/api/v1/workspace", { method: "PUT", json: body });
   return new Date(result.saved_at);

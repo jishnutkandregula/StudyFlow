@@ -16,8 +16,10 @@ import {
   syncCanvas,
 } from "../../lib/canvasClient";
 import { ApiError } from "../../lib/http";
+import { eventToBusy } from "../../lib/busyTime";
+import { type Estimate, requestEstimates } from "../../lib/estimatesApi";
 import { estimateFromPoints, plural, relativeTime, toLocalParts } from "../../lib/format";
-import type { CanvasConnection, Task } from "../../lib/types";
+import type { BusyBlock, CanvasConnection, Task } from "../../lib/types";
 import { Icon } from "../Icon";
 import { AssignmentReview, isSchedulable, type ReviewItem } from "./AssignmentReview";
 
@@ -28,6 +30,8 @@ export type CanvasImport = {
   tasks: Task[];
   /** Every Canvas task id the student reviewed; ids not in `tasks` were excluded. */
   reviewedIds: string[];
+  /** Class meetings from the Canvas feed (null when this sync had none to offer). */
+  busy: BusyBlock[] | null;
 };
 
 type Props = {
@@ -51,6 +55,7 @@ function toReviewItems(
   existing: Task[],
   completedIds: Set<string>,
   now: Date,
+  estimates: Map<string, Estimate>,
 ): ReviewItem[] {
   const seen = new Set<string>();
   return assignments.flatMap((assignment) => {
@@ -61,6 +66,9 @@ function toReviewItems(
     const course = courses.find((c) => c.id === assignment.course_id);
     const prior = existing.find((task) => task.id === id);
     const due = assignment.due_at ? toLocalParts(assignment.due_at) : null;
+    const guess = estimates.get(id);
+    // A re-sync keeps the student's number; a new assignment starts from the estimator.
+    const suggested = guess?.minutes ?? estimateFromPoints(assignment.points_possible);
     return [{
       id,
       title: assignment.title,
@@ -73,7 +81,13 @@ function toReviewItems(
       points: assignment.points_possible ?? null,
       url: assignment.html_url ?? null,
       include: prior ? true : Boolean(due) && !completedIds.has(id),
-      estimate: String(prior?.estimated_minutes ?? estimateFromPoints(assignment.points_possible)),
+      estimate: String(prior?.estimated_minutes ?? suggested),
+      description: assignment.description ?? null,
+      category: prior?.category ?? guess?.category ?? null,
+      reason: prior ? prior.estimate_reason ?? null : guess?.reason ?? null,
+      confidence: prior ? null : guess?.confidence ?? null,
+      baseEstimate: prior?.original_estimate ?? guess?.base_minutes ?? null,
+      suggested: prior ? null : suggested,
       manualDueDate: prior && !due ? prior.due_date : "",
       alreadyInPlan: Boolean(prior),
       finished: completedIds.has(id),
@@ -81,8 +95,9 @@ function toReviewItems(
   }).sort((a, b) => `${a.dueDate ?? "9999"}${a.dueTime ?? ""}`.localeCompare(`${b.dueDate ?? "9999"}${b.dueTime ?? ""}`));
 }
 
-function toTask(item: ReviewItem, courses: CanvasCourse[]): Task {
+function toTask(item: ReviewItem, courses: CanvasCourse[], existing: Task[]): Task {
   const course = courses.find((c) => c.id === item.courseId);
+  const prior = existing.find((task) => task.id === item.id);
   return {
     id: item.id,
     title: item.title,
@@ -96,6 +111,10 @@ function toTask(item: ReviewItem, courses: CanvasCourse[]): Task {
     source: "canvas",
     points: item.points,
     url: item.url,
+    category: item.category,
+    estimate_reason: item.reason,
+    original_estimate: item.baseEstimate,
+    logged_minutes: prior?.logged_minutes ?? 0,
   };
 }
 
@@ -117,6 +136,7 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
   const [error, setError] = useState("");
   const [summary, setSummary] = useState("");
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [classBusy, setClassBusy] = useState<BusyBlock[] | null>(null);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -216,7 +236,18 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
     try {
       const ids = [...selectedCourses];
       const result = await syncCanvas(ids.length < courses.length ? ids : undefined);
-      setItems(toReviewItems(result.assignments, courses, existingTasks, new Set(completedIds), new Date()));
+      // Estimates are a helpful default, never a blocker: if they fail, points-based guesses stand.
+      const estimates = await requestEstimates(
+        result.assignments.map((assignment) => ({
+          id: taskId(assignment),
+          title: assignment.title,
+          course: courses.find((course) => course.id === assignment.course_id)?.course_code ?? "",
+          description: assignment.description ?? null,
+          points: assignment.points_possible ?? null,
+        })),
+      ).catch(() => new Map<string, Estimate>());
+      setItems(toReviewItems(result.assignments, courses, existingTasks, new Set(completedIds), new Date(), estimates));
+      setClassBusy(result.busy ? result.busy.flatMap((event) => eventToBusy(event.start, event.end, "Class", "canvas")) : null);
       onConnected({ displayName, canvasUrl, method, lastSynced: new Date() });
       setStep("assignments");
     } catch (err) {
@@ -236,7 +267,7 @@ export function CanvasModal({ now, connection, existingTasks, completedIds, onCl
 
   function confirmImport() {
     const kept = items.filter((item) => item.include && isSchedulable(item));
-    onImport({ tasks: kept.map((item) => toTask(item, courses)), reviewedIds: items.map((item) => item.id) });
+    onImport({ tasks: kept.map((item) => toTask(item, courses, existingTasks)), reviewedIds: items.map((item) => item.id), busy: classBusy });
     const skipped = items.filter((item) => !item.dueDate && !(item.include && isSchedulable(item))).length;
     setSummary(
       `${plural(kept.length, "assignment")} from ${plural(selectedCourses.size, "course")} ${kept.length === 1 ? "is" : "are"} in your plan.` +

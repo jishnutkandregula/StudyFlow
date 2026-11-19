@@ -14,6 +14,7 @@ import { WorkloadPanel } from "../components/WorkloadPanel";
 import { courseColorMap } from "../lib/courseColors";
 import { formatHours, plural, toDateKey, toLocalParts } from "../lib/format";
 import { importCalendarEvents, requestCalendarToken } from "../lib/googleCalendar";
+import { eventToBusy, replaceBusySource } from "../lib/busyTime";
 import { diffPlans, generatePlan, type PlanInputs, planInputsKey } from "../lib/planApi";
 import { deleteWorkspace, loadWorkspace, saveWorkspace, type WorkspaceState } from "../lib/workspaceApi";
 import type {
@@ -22,6 +23,7 @@ import type {
   CanvasConnection,
   CompletedTask,
   DailyAvailability,
+  EstimateSample,
   LockedSession,
   Plan,
   PlanChange,
@@ -67,6 +69,7 @@ export default function Home() {
   const [lockedSessions, setLockedSessions] = useState<LockedSession[]>([]);
   const [blockedDates, setBlockedDates] = useState<string[]>([]);
   const [completed, setCompleted] = useState<CompletedTask[]>([]);
+  const [estimateHistory, setEstimateHistory] = useState<EstimateSample[]>([]);
   const [change, setChange] = useState<PlanChange | null>(null);
 
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -99,6 +102,7 @@ export default function Home() {
         if (state) {
           if (state.tasks) setTasks(state.tasks);
           if (state.completed) setCompleted(state.completed);
+          if (state.estimateHistory) setEstimateHistory(state.estimateHistory);
           if (state.availability) setAvailability(state.availability);
           if (state.preferences) setPreferences({ ...defaultPreferences, ...state.preferences });
           if (state.protectedBlocks) setProtectedBlocks(state.protectedBlocks);
@@ -134,6 +138,7 @@ export default function Home() {
     calendar,
     plan,
     planKey,
+    estimateHistory,
   };
   const workspaceJson = JSON.stringify(workspace);
   const latestWorkspace = useRef(workspace);
@@ -224,9 +229,10 @@ export default function Home() {
 
   /** Snapshot everything a session action can touch, so a single click can undo it. */
   function snapshot() {
-    const saved = { tasks, lockedSessions, blockedDates, completed, plan, planKey };
+    const saved = { tasks, lockedSessions, blockedDates, completed, plan, planKey, estimateHistory };
     return () => {
       setTasks(saved.tasks);
+      setEstimateHistory(saved.estimateHistory);
       setLockedSessions(saved.lockedSessions);
       setBlockedDates(saved.blockedDates);
       setCompleted(saved.completed);
@@ -253,28 +259,65 @@ export default function Home() {
   const sameSlot = (lock: LockedSession, session: Session) =>
     lock.task_id === session.task_id && lock.starts_at === session.starts_at;
 
+  /**
+   * Finishing a task teaches StudyFlow the student's pace: StudyFlow's first estimate vs.
+   * the focus time actually logged. Only tasks with both numbers count.
+   */
+  function learnFrom(task: Task, actualMinutes: number) {
+    if (!task.original_estimate || !task.category || actualMinutes < 15 || task.source === "sample") return;
+    setEstimateHistory((history) => [
+      ...history,
+      { category: task.category!, course: task.course, estimated_minutes: task.original_estimate!, actual_minutes: actualMinutes },
+    ].slice(-300));
+  }
+
+  function finishTask(task: Task, logged: number, locks: LockedSession[], cause: string, text: string) {
+    applyAndReplan(
+      {
+        tasks: tasks.filter((item) => item.id !== task.id),
+        lockedSessions: locks.filter((lock) => lock.task_id !== task.id),
+        completed: [{ id: task.id, title: task.title, course: task.course }, ...completed],
+      },
+      cause,
+      text,
+    );
+    learnFrom(task, logged);
+  }
+
   function handleSessionDone(session: Session) {
     const task = tasks.find((item) => item.id === session.task_id);
     if (!task) return;
     const left = task.estimated_minutes - session.minutes;
+    const logged = (task.logged_minutes ?? 0) + session.minutes;
     const locks = lockedSessions.filter((lock) => !sameSlot(lock, session));
     if (left < 15) {
-      applyAndReplan(
-        {
-          tasks: tasks.filter((item) => item.id !== task.id),
-          lockedSessions: locks.filter((lock) => lock.task_id !== task.id),
-          completed: [{ id: task.id, title: task.title, course: task.course }, ...completed],
-        },
-        `Finished “${task.title}”`,
-        `${task.title} is finished. Its remaining sessions were freed up.`,
-      );
+      finishTask(task, logged, locks, `Finished “${task.title}”`, `${task.title} is finished. Its remaining sessions were freed up.`);
     } else {
       applyAndReplan(
-        { tasks: tasks.map((item) => (item.id === task.id ? { ...item, estimated_minutes: left } : item)), lockedSessions: locks },
+        {
+          tasks: tasks.map((item) => (item.id === task.id ? { ...item, estimated_minutes: left, logged_minutes: logged } : item)),
+          lockedSessions: locks,
+        },
         `Logged ${session.minutes}m on “${task.title}”`,
         `Nice. ${formatHours(left)} left on ${task.title}.`,
       );
     }
+  }
+
+  /** Done before the plan expected: free the remaining time, and learn from it. */
+  function handleFinishEarly(taskId: string) {
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    const logged = task.logged_minutes ?? 0;
+    finishTask(
+      task,
+      logged,
+      lockedSessions,
+      `Finished “${task.title}” early`,
+      logged >= 15
+        ? `${task.title} is done in ${formatHours(logged)}. StudyFlow will remember your pace.`
+        : `${task.title} is done. Its remaining sessions were freed up.`,
+    );
   }
 
   function handleMoreTime(session: Session) {
@@ -321,20 +364,16 @@ export default function Home() {
     try {
       const token = await requestCalendarToken(clientId);
       const imported = await importCalendarEvents(token);
-      // Only timed events block study time. All-day items (holidays, birthdays, OOO markers)
-      // are skipped — assignments come from Canvas, not from the calendar.
-      const busy = imported.events
-        .filter((event) => event.start?.dateTime && event.end?.dateTime)
-        .map((event) => {
-          const start = toLocalParts(event.start!.dateTime!);
-          const end = toLocalParts(event.end!.dateTime!);
-          return { date: start.date, start_time: start.time, end_time: end.time, label: event.title.slice(0, 160) };
-        })
-        .filter((event) => event.start_time < event.end_time);
+      // Only timed events that really take the student's time block study time (see
+      // blocksTime). All-day items are skipped: assignments come from Canvas, not the calendar.
+      const google = imported.events.flatMap((event) =>
+        eventToBusy(event.start!.dateTime!, event.end!.dateTime!, event.title, "google"),
+      );
+      const busy = replaceBusySource(busyTime, "google", google);
       setBusyTime(busy);
-      setCalendar({ busyEvents: busy.length, calendarsScanned: imported.calendarsScanned, lastSynced: new Date() });
+      setCalendar({ busyEvents: google.length, calendarsScanned: imported.calendarsScanned, lastSynced: new Date() });
       setToast({
-        text: `Google Calendar synced: ${plural(busy.length, "event")} from ${plural(imported.calendarsScanned, "calendar")} will be protected.`,
+        text: `Google Calendar synced: ${plural(google.length, "event")} from ${plural(imported.calendarsScanned, "calendar")} will be protected.`,
         tone: "info",
       });
     } catch (error) {
@@ -377,8 +416,10 @@ export default function Home() {
     setToast({ text: "Sample data cleared.", tone: "info" });
   }
 
-  function handleCanvasImport({ tasks: imported, reviewedIds }: CanvasImport) {
+  function handleCanvasImport({ tasks: imported, reviewedIds, busy }: CanvasImport) {
     const reviewed = new Set(reviewedIds);
+    // Class meetings from the Canvas feed replace the previous Canvas busy time.
+    if (busy) setBusyTime((current) => replaceBusySource(current, "canvas", busy));
     if (hasSample) setToast({ text: "Sample data cleared so it doesn’t mix with your real coursework.", tone: "info" });
     setTasks([...withoutSample(tasks).filter((task) => !reviewed.has(task.id)), ...imported]);
   }
@@ -489,6 +530,7 @@ export default function Home() {
               setTasks((current) => current.filter((task) => task.id !== id));
               setLockedSessions((current) => current.filter((lock) => lock.task_id !== id));
             }}
+            onFinish={handleFinishEarly}
             onEstimateChange={(id, minutes) =>
               setTasks((current) => current.map((task) => (task.id === id ? { ...task, estimated_minutes: minutes } : task)))
             }

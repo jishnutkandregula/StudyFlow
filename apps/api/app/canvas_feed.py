@@ -28,17 +28,28 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
 
 from app.canvas_client import _validate_canvas_url
-from app.canvas_models import CanvasAssignment, CanvasCourse, CanvasError, CanvasErrorCode
+from app.canvas_models import (
+    CanvasAssignment,
+    CanvasBusyEvent,
+    CanvasCourse,
+    CanvasError,
+    CanvasErrorCode,
+)
+from app.estimator import plain_text
 
 # Feeds for a busy student run a few hundred KB; this is generous headroom.
 MAX_FEED_BYTES = 5 * 1024 * 1024
+# Enough of an assignment's instructions to estimate it, without storing whole handouts.
+MAX_DESCRIPTION_CHARS = 4000
+# Matches how far ahead Google Calendar busy time is read.
+BUSY_HORIZON_DAYS = 120
 
 _FEED_PATH_RE = re.compile(r"^/feeds/calendars/user_[A-Za-z0-9]{10,128}\.ics$")
 _COURSE_ID_RES = (
@@ -61,6 +72,9 @@ class FeedEvent:
     url: str = ""
     start: str = ""
     start_params: dict[str, str] = field(default_factory=dict)
+    end: str = ""
+    end_params: dict[str, str] = field(default_factory=dict)
+    description: str = ""
 
 
 @dataclass
@@ -68,6 +82,8 @@ class ParsedFeed:
     calendar_name: str
     courses: list[CanvasCourse]
     assignments: list[CanvasAssignment]
+    # Class meetings and other timed Canvas events: never schedule study time over them.
+    busy: list[CanvasBusyEvent] = field(default_factory=list)
 
 
 def validate_feed_url(raw_url: str) -> str:
@@ -233,14 +249,26 @@ def parse_feed(text: str, now: Optional[datetime] = None) -> ParsedFeed:  # noqa
             current.url = value.strip()
         elif name == "DTSTART":
             current.start, current.start_params = value, params
+        elif name == "DTEND":
+            current.end, current.end_params = value, params
+        elif name == "DESCRIPTION" and not current.description:
+            current.description = _unescape(value)[:MAX_DESCRIPTION_CHARS]
+        elif name == "X-ALT-DESC" and not current.description:
+            current.description = plain_text(_unescape(value))[:MAX_DESCRIPTION_CHARS]
 
     courses: dict[str, CanvasCourse] = {}
     assignments: dict[str, CanvasAssignment] = {}
+    busy: dict[tuple[str, str], CanvasBusyEvent] = {}
     today = now.date()
+    horizon = now + timedelta(days=BUSY_HORIZON_DAYS)
     for event in events:
         # Canvas UIDs: event-assignment-<id> for due dates, event-calendar-event-<id> for
-        # class meetings and other events. Only due dates become tasks.
+        # class meetings and other events. Due dates become tasks; timed events become
+        # busy time so study sessions never land on top of a lecture or section.
         if "assignment" not in event.uid:
+            meeting = _busy_event(event, now, horizon)
+            if meeting:
+                busy[(meeting.start, meeting.end)] = meeting
             continue
         assignment_id = _first_match(_ASSIGNMENT_ID_RES, event.uid, event.url)
         due_at = _parse_when(event.start, event.start_params)
@@ -266,6 +294,7 @@ def parse_feed(text: str, now: Optional[datetime] = None) -> ParsedFeed:  # noqa
             due_at=due_at,
             points_possible=None,
             html_url=_assignment_link(event.url, course_id, assignment_id),
+            description=event.description or None,
         )
 
     ordered = sorted(assignments.values(), key=lambda item: item.due_at or "")
@@ -273,7 +302,32 @@ def parse_feed(text: str, now: Optional[datetime] = None) -> ParsedFeed:  # noqa
         calendar_name=calendar_name,
         courses=sorted(courses.values(), key=lambda course: course.name.lower()),
         assignments=ordered,
+        busy=sorted(busy.values(), key=lambda item: item.start),
     )
+
+
+def _busy_event(event: FeedEvent, now: datetime, horizon: datetime) -> Optional[CanvasBusyEvent]:  # noqa: UP045
+    """A timed (not all-day) upcoming event between 5 minutes and 12 hours long."""
+    if event.start_params.get("VALUE") == "DATE" or event.end_params.get("VALUE") == "DATE":
+        return None
+    start, end = (
+        _parse_when(event.start, event.start_params),
+        _parse_when(event.end, event.end_params),
+    )
+    if not start or not end:
+        return None
+    start_at, end_at = _as_datetime(start, now), _as_datetime(end, now)
+    minutes = (end_at - start_at).total_seconds() / 60
+    if not 5 <= minutes <= 12 * 60 or end_at <= now or start_at >= horizon:
+        return None
+    return CanvasBusyEvent(start=start, end=end)
+
+
+def _as_datetime(value: str, now: datetime) -> datetime:
+    if value.endswith("Z"):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    # Floating local time: close enough for filtering by the horizon.
+    return datetime.fromisoformat(value).replace(tzinfo=now.tzinfo or timezone.utc)
 
 
 def _is_past(due_at: str, now: datetime, today: date) -> bool:
