@@ -27,6 +27,7 @@ export type WorkspaceState = {
   plan: Plan | null;
   planKey: string;
   estimateHistory: EstimateSample[];
+  onboardedAt: string | null;
 };
 
 type WorkspaceDto = {
@@ -43,6 +44,7 @@ type WorkspaceDto = {
   plan: Plan | null;
   plan_key: string;
   estimate_history?: EstimateSample[];
+  onboarded_at?: string | null;
 };
 
 type LoadResponse = {
@@ -85,6 +87,7 @@ export async function loadWorkspace(): Promise<LoadedWorkspace> {
       plan: ws.plan,
       planKey: ws.plan_key,
       estimateHistory: ws.estimate_history ?? [],
+      onboardedAt: ws.onboarded_at ?? null,
     },
   };
 }
@@ -108,6 +111,7 @@ export async function saveWorkspace(state: WorkspaceState): Promise<Date> {
     plan_key: state.planKey,
     // Keep the most recent samples; old habits matter less than recent ones.
     estimate_history: state.estimateHistory.slice(-300),
+    onboarded_at: state.onboardedAt,
   };
   const result = await apiFetch<{ saved_at: string }>("/api/v1/workspace", { method: "PUT", json: body });
   return new Date(result.saved_at);

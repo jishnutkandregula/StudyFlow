@@ -69,3 +69,14 @@ def test_delete_removes_everything_and_clears_cookie(session_client) -> None:
     # The old session is gone: a fresh load starts empty.
     fresh = TestClient(app)
     assert fresh.get("/api/v1/workspace").json()["workspace"] is None
+
+
+def test_onboarding_flag_round_trips(session_client) -> None:
+    assert session_client.put(
+        "/api/v1/workspace", json=_workspace(onboarded_at="2026-11-19T18:00:00.000Z")
+    ).status_code == 200
+    loaded = session_client.get("/api/v1/workspace").json()["workspace"]
+    assert loaded["onboarded_at"] == "2026-11-19T18:00:00.000Z"
+    # Older clients that never send it still save, and the flag defaults to unset.
+    assert session_client.put("/api/v1/workspace", json=_workspace()).status_code == 200
+    assert session_client.get("/api/v1/workspace").json()["workspace"]["onboarded_at"] is None

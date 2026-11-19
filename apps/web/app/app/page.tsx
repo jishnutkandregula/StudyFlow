@@ -5,6 +5,7 @@ import { CanvasErrorBoundary } from "../../components/canvas/CanvasErrorBoundary
 import { type CanvasImport, CanvasModal } from "../../components/canvas/CanvasModal";
 import { ConnectionRibbon } from "../../components/ConnectionRibbon";
 import { Icon } from "../../components/Icon";
+import { Onboarding, type RhythmChoice } from "../../components/Onboarding";
 import { PlanTimeline } from "../../components/PlanTimeline";
 import { PreferencesPanel } from "../../components/PreferencesPanel";
 import { Sidebar } from "../../components/Sidebar";
@@ -71,6 +72,8 @@ export default function StudyFlowApp() {
   const [completed, setCompleted] = useState<CompletedTask[]>([]);
   const [estimateHistory, setEstimateHistory] = useState<EstimateSample[]>([]);
   const [change, setChange] = useState<PlanChange | null>(null);
+  const [onboardedAt, setOnboardedAt] = useState<string | null>(null);
+  const [onboarding, setOnboarding] = useState(false);
 
   const [plan, setPlan] = useState<Plan | null>(null);
   const [planKey, setPlanKey] = useState("");
@@ -112,8 +115,14 @@ export default function StudyFlowApp() {
           setCalendar(state.calendar ?? null);
           setPlan(state.plan ?? null);
           setPlanKey(state.planKey ?? "");
+          setOnboardedAt(state.onboardedAt ?? null);
         }
         setCanvas(savedCanvas);
+        // First-run setup is only for a brand-new, empty workspace, and not when the
+        // student arrived from the landing page's "Try a sample week" link.
+        const fromSample = new URLSearchParams(window.location.search).get("sample") === "1";
+        const empty = !state?.tasks?.length && !savedCanvas && !state?.calendar;
+        setOnboarding(!fromSample && empty && !state?.onboardedAt);
         setSaveStatus({ state: "saved", at: savedAt });
       })
       .catch(() => {
@@ -139,6 +148,7 @@ export default function StudyFlowApp() {
     plan,
     planKey,
     estimateHistory,
+    onboardedAt,
   };
   const workspaceJson = JSON.stringify(workspace);
   const latestWorkspace = useRef(workspace);
@@ -438,6 +448,22 @@ export default function StudyFlowApp() {
 
   const closeCanvas = useCallback(() => setCanvasOpen(false), []);
 
+  function handleApplyRhythm(choice: RhythmChoice) {
+    setAvailability(choice.availability);
+    setPreferences((current) => ({ ...current, ...choice.preferences }));
+  }
+
+  function finishOnboarding(next: "plan" | "add" | "dashboard" | "sample") {
+    setOnboarding(false);
+    setOnboardedAt(new Date().toISOString());
+    if (next === "plan") handleGenerate();
+    if (next === "sample") handleLoadSample();
+    if (next === "add") {
+      setShowCapture(true);
+      window.setTimeout(() => document.getElementById("work")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    }
+  }
+
   return (
     <main className="flow-shell">
       <div className="ambient ambient-one" />
@@ -561,6 +587,20 @@ export default function StudyFlowApp() {
         />
       </section>
 
+      {onboarding && hydrated && (
+        <Onboarding
+          canvas={canvas}
+          canvasAssignments={canvasTasks.length}
+          calendar={calendar}
+          calendarImporting={calendarImporting}
+          taskCount={tasks.length}
+          onApplyRhythm={handleApplyRhythm}
+          onOpenCanvas={() => setCanvasOpen(true)}
+          onConnectCalendar={handleConnectCalendar}
+          onLoadSample={() => finishOnboarding("sample")}
+          onFinish={finishOnboarding}
+        />
+      )}
       {canvasOpen && (
         <CanvasErrorBoundary onClose={closeCanvas}>
           <CanvasModal

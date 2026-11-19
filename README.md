@@ -72,10 +72,12 @@ Working MVP. A student can:
 5. Replan as life happens: mark a session done, add 30 minutes, lock a session in place, or take
    today off. Every change shows what moved, and every change can be undone.
 6. Come back later: the workspace autosaves, and Canvas re-syncs in one click.
-7. Use it in light or dark mode. The landing page at `/` shows the planner working on a sample
+7. Get set up in about a minute: a brand-new workspace opens a short first-run setup (study
+   rhythm, Canvas, Google Calendar, first plan). Every step can be skipped.
+8. Use it in light or dark mode. The landing page at `/` shows the planner working on a sample
    week; the app itself lives at `/app` (`/app?sample=1` opens it with the sample week loaded).
 
-Next: first-run onboarding, accounts across devices, and optional study blocks written to Google Calendar.
+Next: accounts across devices, and optional study blocks written to Google Calendar.
 See the [product vision](docs/PRODUCT_VISION.md) for the full gap analysis.
 
 ## Run locally

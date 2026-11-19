@@ -71,6 +71,8 @@ class Workspace(BaseModel):
     # The last generated plan, kept so a reload shows the same plan instead of a new one.
     plan: Optional[dict[str, Any]] = None  # noqa: UP045
     plan_key: str = Field(default="", max_length=200_000)
+    # When the student finished (or skipped) first-run setup, so it never shows twice.
+    onboarded_at: Optional[str] = Field(default=None, max_length=40)  # noqa: UP045
 
 
 class CanvasStatus(BaseModel):
